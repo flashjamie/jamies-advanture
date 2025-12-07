@@ -37,7 +37,7 @@
         <header class="bg-white pt-10 pb-4 px-6 rounded-b-[2rem] shadow-sm z-20 flex-none border-b border-slate-100">
             <div class="flex justify-between items-end mb-5">
                 <div>
-                    <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Jamie's advanture</h1>
+                    <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Jamie's Adventure</h1>
                     <div class="flex items-center gap-2 mt-1">
                         <span class="text-[10px] font-bold bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full">KR</span>
                         <i class="fa-solid fa-arrow-right text-[10px] text-slate-300"></i>
@@ -370,7 +370,7 @@
                     return note ? note.replace(/\n/g, '<br>') : '';
                 },
                 
-                // Weather Logic
+                // Weather Logic - Fixed
                 async fetchWeather() {
                     const firstItem = this.dailyItinerary[0];
                     if (!firstItem || !firstItem.coords) { this.weather = null; return; }
@@ -379,9 +379,12 @@
                     try {
                         const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`);
                         const data = await res.json();
-                        this.weather = data.current_weather;
+                        // 修正：手動對應 temperature 到 temp，並四捨五入
+                        this.weather = {
+                            temp: Math.round(data.current_weather.temperature)
+                        };
                     } catch (e) {
-                        console.error(e);
+                        console.error("Weather error:", e);
                     }
                 },
 
