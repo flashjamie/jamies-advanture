@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Solo Trip 2026: 完整版</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root { --primary: #0F766E; --bg-body: #F8FAFC; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); -webkit-tap-highlight-color: transparent; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        
+        /* 玻璃擬態卡片 */
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+        
+        /* 日期選單 Active 狀態 */
+        .date-chip.active { background-color: var(--primary); color: white; box-shadow: 0 8px 16px -4px rgba(15, 118, 110, 0.3); transform: translateY(-1px); }
+        
+        #map { height: 100%; width: 100%; border-radius: 1.5rem; z-index: 10; }
+        
+        /* Modal 動畫 */
+        .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
+        .modal-enter-from, .modal-leave-to { opacity: 0; }
+    </style>
+</head>
+<body class="text-slate-600 h-screen flex flex-col overflow-hidden">
+
+    <div id="app" class="flex flex-col h-full max-w-md mx-auto w-full bg-slate-50 relative shadow-2xl">
+
+        <header class="bg-white pt-10 pb-4 px-6 rounded-b-[2rem] shadow-sm z-20 flex-none border-b border-slate-100">
+            <div class="flex justify-between items-end mb-5">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Jamie's advanture</h1>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="text-[10px] font-bold bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full">KR</span>
+                        <i class="fa-solid fa-arrow-right text-[10px] text-slate-300"></i>
+                        <span class="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">MN</span>
+                        <i class="fa-solid fa-arrow-right text-[10px] text-slate-300"></i>
+                        <span class="text-[10px] font-bold bg-red-50 text-red-700 px-2 py-0.5 rounded-full">TR</span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">目前總花費</div>
+                    <div class="text-lg font-bold text-teal-700">NT$ {{ formatNumber(totalSpent) }}</div>
+                </div>
+            </div>
+
+            <div class="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
+                <div v-for="date in sortedDates" :key="date" 
+                     @click="selectedDate = date"
+                     :class="['date-chip flex-none px-5 py-2.5 rounded-2xl text-sm font-bold cursor-pointer border border-slate-100 bg-white text-slate-400 transition-all', selectedDate === date ? 'active' : '']">
+                    {{ formatDateShort(date) }}
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-y-auto hide-scrollbar p-6 space-y-6 relative pb-24">
+            
+            <div v-if="currentTab === 'schedule'" class="space-y-4">
+                <div class="flex justify-between items-center px-1 mb-2">
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-lg font-bold text-slate-800">今日安排</h2>
+                        <div v-if="weather" class="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-100 flex items-center shadow-sm">
+                            <i class="fa-solid fa-cloud-sun text-orange-400 mr-1"></i> {{ weather.temp }}°C
+                        </div>
+                    </div>
+                    <button @click="openAddModal" class="bg-teal-600 text-white w-8 h-8 rounded-full shadow-lg flex items-center justify-center hover:bg-teal-700 transition active:scale-90">
+                        <i class="fa-solid fa-plus text-sm"></i>
+                    </button>
+                </div>
+
+                <div v-if="dailyItinerary.length > 0" class="space-y-4">
+                    <div v-for="item in dailyItinerary" :key="item.id" class="glass-card rounded-3xl p-5 relative overflow-hidden group transition-all hover:translate-y-[-2px]">
+                        <div class="absolute left-0 top-0 bottom-0 w-1.5" :class="getTypeColor(item.type)"></div>
+                        
+                        <div class="pl-3">
+                            <div class="flex justify-between items-start mb-1">
+                                <span class="text-xs font-black font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded-lg tracking-tight">{{ item.time }}</span>
+                                <div class="flex gap-3 opacity-80">
+                                    <button @click="openEditModal(item)" class="text-slate-300 hover:text-teal-600 transition"><i class="fa-solid fa-pen text-xs"></i></button>
+                                    <button @click="deleteItem(item.id)" class="text-slate-300 hover:text-red-400 transition"><i class="fa-solid fa-trash text-xs"></i></button>
+                                </div>
+                            </div>
+                            
+                            <h3 class="text-lg font-bold text-slate-800 mb-1 leading-tight">{{ item.location }}</h3>
+                            <p class="text-sm text-slate-600 font-medium mb-2">{{ item.activity }}</p>
+                            
+                            <div v-if="item.note" class="bg-slate-50 p-3 rounded-xl text-xs text-slate-500 leading-relaxed border border-slate-100 mt-2">
+                                <i class="fa-solid fa-circle-info text-teal-400 mr-1"></i> 
+                                <span v-html="formatNote(item.note)"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div v-else class="text-center py-16 opacity-40">
+                    <i class="fa-solid fa-mug-hot text-4xl mb-3 text-slate-300"></i>
+                    <p class="text-sm">本日無行程，點擊 + 新增</p>
+                </div>
+            </div>
+
+            <div v-show="currentTab === 'map'" class="h-full flex flex-col">
+                <div class="bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 flex-1 relative overflow-hidden">
+                    <div id="map"></div>
+                    <button @click="locateUser" class="absolute bottom-6 right-6 bg-white text-slate-800 w-12 h-12 rounded-full shadow-lg z-[400] flex items-center justify-center hover:text-teal-600 transition">
+                        <i class="fa-solid fa-location-crosshairs text-lg"></i>
+                    </button>
+                </div>
+                <div class="mt-4 px-2">
+                    <div class="flex gap-2 overflow-x-auto hide-scrollbar">
+                        <button v-for="item in dailyItinerary" @click="panMapTo(item)" class="flex-none bg-white px-4 py-2.5 rounded-xl text-xs font-bold border border-slate-200 shadow-sm whitespace-nowrap active:bg-teal-50 active:border-teal-200 active:text-teal-700 transition">
+                            📍 {{ item.location }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentTab === 'wallet'" class="space-y-6">
+                <div class="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-6 rounded-[2rem] shadow-xl relative overflow-hidden">
+                    <div class="absolute -right-6 -top-6 w-32 h-32 bg-teal-500 opacity-20 rounded-full blur-2xl"></div>
+                    <div class="relative z-10">
+                        <div class="text-3xl font-bold mb-4">NT$ {{ formatNumber(totalSpent) }}</div>
+                        <div class="text-xs opacity-50 uppercase tracking-widest">Total Expenses</div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-bold text-slate-700 mb-3">快速記帳</h3>
+                    <div class="flex gap-2 mb-3">
+                        <input type="number" v-model="expenseForm.amount" placeholder="金額" class="w-2/3 bg-slate-50 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 ring-teal-500">
+                        <select v-model="expenseForm.currency" class="w-1/3 bg-slate-50 border-none rounded-xl px-2 py-3 text-sm font-bold outline-none">
+                            <option value="MNT">🇲🇳 蒙圖</option>
+                            <option value="TRY">🇹🇷 里拉</option>
+                            <option value="KRW">🇰🇷 韓元</option>
+                            <option value="USD">🇺🇸 美金</option>
+                            <option value="NTD">🇹🇼 台幣</option>
+                        </select>
+                    </div>
+                    <input type="text" v-model="expenseForm.item" placeholder="項目" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm mb-4 outline-none">
+                    <button @click="addExpense" class="w-full bg-teal-600 text-white py-3 rounded-xl text-sm font-bold shadow-lg shadow-teal-200">加入 (約 NT$ {{ calculateTWD }})</button>
+                </div>
+
+                <div class="space-y-3 pb-8">
+                    <div v-for="(exp, idx) in expenses" :key="idx" class="bg-white p-4 rounded-2xl flex justify-between items-center border border-slate-50">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 text-sm">
+                                <i :class="getCategoryIcon(exp.category)"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-slate-700 text-sm">{{ exp.item }}</div>
+                                <div class="text-[10px] text-slate-400 font-mono">{{ exp.currency }} {{ formatNumber(exp.original) }}</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-bold text-slate-800 text-sm">NT$ {{ formatNumber(exp.twd) }}</div>
+                            <button @click="expenses.splice(idx, 1)" class="text-[10px] text-red-300 mt-1">刪除</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentTab === 'translate'" class="space-y-6">
+                <div class="grid grid-cols-2 gap-4">
+                    <button @click="transLang = 'mn'" :class="['p-4 rounded-2xl border text-center transition', transLang === 'mn' ? 'bg-teal-600 text-white border-teal-600 shadow-lg shadow-teal-200' : 'bg-white border-slate-100 text-slate-400']">
+                        <div class="text-2xl mb-1">🇲🇳</div>
+                        <div class="text-xs font-bold">蒙古語</div>
+                    </button>
+                    <button @click="transLang = 'tr'" :class="['p-4 rounded-2xl border text-center transition', transLang === 'tr' ? 'bg-teal-600 text-white border-teal-600 shadow-lg shadow-teal-200' : 'bg-white border-slate-100 text-slate-400']">
+                        <div class="text-2xl mb-1">🇹🇷</div>
+                        <div class="text-xs font-bold">土耳其語</div>
+                    </button>
+                </div>
+                <div class="space-y-3">
+                    <div v-for="phrase in phrases" class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm" @click="alertText(phrase)">
+                        <div class="text-xs text-slate-400 mb-1">{{ phrase.tw }}</div>
+                        <div class="text-xl font-bold text-slate-800">{{ transLang === 'mn' ? phrase.mn : phrase.tr }}</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="bg-white border-t border-slate-100 px-8 h-[85px] flex justify-between items-center flex-none z-30 rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
+            <button v-for="tab in tabs" @click="currentTab = tab.id" :class="['flex flex-col items-center gap-1.5 transition-all w-16', currentTab === tab.id ? 'text-teal-600 scale-105' : 'text-slate-300']">
+                <i :class="['fa-solid text-xl', tab.icon]"></i>
+                <span class="text-[10px] font-bold">{{ tab.name }}</span>
+            </button>
+        </nav>
+
+        <transition name="modal">
+            <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+                <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl transition-all transform">
+                    <h3 class="text-lg font-bold text-slate-800 mb-4">{{ isEditing ? '編輯行程' : '新增行程' }}</h3>
+                    
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-xs font-bold text-slate-400 ml-1">時間</label>
+                            <input type="time" v-model="form.time" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-slate-400 ml-1">地點</label>
+                            <input type="text" v-model="form.location" placeholder="例如：伊斯坦堡機場" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-slate-400 ml-1">活動內容</label>
+                            <input type="text" v-model="form.activity" placeholder="做什麼？" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-slate-400 ml-1">類型</label>
+                            <select v-model="form.type" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none">
+                                <option value="visit">📷 景點</option>
+                                <option value="transport">✈️ 交通</option>
+                                <option value="stay">🏨 住宿</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-slate-400 ml-1">備註</label>
+                            <textarea v-model="form.note" rows="2" placeholder="備註..." class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 mt-6">
+                        <button @click="closeModal" class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 font-bold text-sm">取消</button>
+                        <button @click="saveItem" class="flex-1 py-3 rounded-xl bg-teal-600 text-white font-bold text-sm shadow-lg shadow-teal-200">儲存</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    currentTab: 'schedule',
+                    selectedDate: '2026-04-24',
+                    weather: null,
+                    transLang: 'mn',
+                    
+                    // Modal 狀態
+                    showModal: false,
+                    isEditing: false,
+                    form: { id: null, time: '', location: '', activity: '', type: 'visit', note: '' },
+
+                    rates: { 'NTD': 1, 'KRW': 0.024, 'MNT': 0.0095, 'TRY': 1.1, 'USD': 32.5, 'EUR': 34.5 },
+                    expenseForm: { amount: '', currency: 'MNT', item: '' },
+
+                    tabs: [
+                        { id: 'schedule', name: '行程', icon: 'fa-layer-group' },
+                        { id: 'map', name: '地圖', icon: 'fa-map-location-dot' },
+                        { id: 'wallet', name: '記帳', icon: 'fa-wallet' },
+                        { id: 'translate', name: '翻譯', icon: 'fa-language' },
+                    ],
+
+                    phrases: [
+                        { tw: '你好', mn: 'Sain baina uu', tr: 'Merhaba' },
+                        { tw: '謝謝', mn: 'Bayarlalaa', tr: 'Teşekkürler' },
+                        { tw: '好吃', mn: 'Amttai', tr: 'Lezzetli' },
+                        { tw: '這個多少錢?', mn: 'Ene khed ve?', tr: 'Bu ne kadar?' },
+                        { tw: '廁所在哪?', mn: 'Noil haana ve?', tr: 'Tuvalet nerede?' }
+                    ],
+
+                    // 完整記帳資料 (依據 CSV)
+                    expenses: [
+                         { item: '機票: 高雄-首爾', original: 5496, currency: 'NTD', twd: 5496, category: 'transport' },
+                         { item: '機票: 首爾-蒙古', original: 120100, currency: 'KRW', twd: 3003, category: 'transport' },
+                         { item: '機票: 蒙古-伊斯坦堡', original: 1415600, currency: 'KRW', twd: 35390, category: 'transport' },
+                         { item: '蒙古機場巴士', original: 15000, currency: 'MNT', twd: 150, category: 'transport' },
+                         { item: '蒙古住宿 (2晚)', original: 1600, currency: 'NTD', twd: 1600, category: 'stay' },
+                         { item: 'Terelj 一日遊', original: 36, currency: 'USD', twd: 1152, category: 'stay' },
+                         { item: '機票: IST-ADB', original: 4000, currency: 'NTD', twd: 4000, category: 'transport' },
+                         { item: '伊斯坦堡住宿 (3晚)', original: 4500, currency: 'NTD', twd: 4500, category: 'stay' },
+                         { item: 'Selçuk 交通', original: 100, currency: 'NTD', twd: 100, category: 'transport' },
+                         { item: 'Selçuk 住宿', original: 2000, currency: 'NTD', twd: 2000, category: 'stay' },
+                         { item: 'Izmir 住宿', original: 4000, currency: 'NTD', twd: 4000, category: 'stay' },
+                         { item: '機票: ADB-ORK', original: 5000, currency: 'NTD', twd: 5000, category: 'transport' }
+                    ],
+
+                    // 完整行程資料 (依據 CSV/PDF 4/24 - 5/2)
+                    itinerary: [
+                        // 4/24
+                        { id: 1, date: '2026-04-24', time: '08:45', location: '釜山金海機場', activity: '飛往首爾金浦 (大韓航空)', type: 'transport', note: '20kg行李直掛', coords: [35.1796, 129.0756] },
+                        { id: 2, date: '2026-04-24', time: '10:30', location: '金浦機場', activity: '轉乘地鐵至仁川機場', type: 'transport', note: '轉機時間約 40min', coords: [37.5587, 126.7945] },
+                        { id: 3, date: '2026-04-24', time: '14:20', location: '仁川機場', activity: '飛往蒙古 (蒙古航空)', type: 'transport', note: '行李23kg+8kg', coords: [37.4602, 126.4407] },
+                        { id: 4, date: '2026-04-24', time: '18:00', location: '烏蘭巴托機場', activity: '搭巴士 X19 至市區', type: 'transport', note: '車程約 2hr', coords: [47.843, 106.764] },
+                        { id: 5, date: '2026-04-24', time: '20:30', location: '烏蘭巴托市區', activity: 'Check-in 飯店', type: 'stay', note: '預計停留 2 晚', coords: [47.9184, 106.9176] },
+                        // 4/25
+                        { id: 6, date: '2026-04-25', time: '09:00', location: 'Terelj National Park', activity: '草原騎馬一日遊', type: 'visit', note: '預約 GetYourGuide', coords: [47.9861, 107.4139] },
+                        // 4/26
+                        { id: 7, date: '2026-04-26', time: '07:55', location: '烏蘭巴托機場', activity: '飛往伊斯坦堡 (蒙古航空商務艙)', type: 'transport', note: '需在機場過夜', coords: [47.843, 106.764] },
+                        { id: 8, date: '2026-04-26', time: '14:00', location: '伊斯坦堡', activity: '抵達並入住舊城區', type: 'stay', note: '預計住宿 3 晚', coords: [41.0082, 28.9784] },
+                        // 4/27
+                        { id: 9, date: '2026-04-27', time: '10:00', location: '聖索菲亞大教堂', activity: '歷史城區探索', type: 'visit', note: '自由活動', coords: [41.0086, 28.9802] },
+                        // 4/28
+                        { id: 10, date: '2026-04-28', time: '09:00', location: '大巴扎市集', activity: '購物與美食', type: 'visit', note: '購買土耳其軟糖', coords: [41.0107, 28.9680] },
+                        // 4/29
+                        { id: 11, date: '2026-04-29', time: '10:00', location: '伊斯坦堡機場', activity: '飛往 Izmir (ADB)', type: 'transport', note: '土航商務艙', coords: [41.2768, 28.7293] },
+                        { id: 12, date: '2026-04-29', time: '14:00', location: 'ADB 機場', activity: '轉乘巴士至 Selçuk', type: 'transport', note: '公車移動', coords: [38.2924, 27.157] },
+                        { id: 13, date: '2026-04-29', time: '16:00', location: 'Selçuk', activity: '入住飯店', type: 'stay', note: '住宿 1 晚', coords: [37.9496, 27.3683] },
+                        // 4/30
+                        { id: 14, date: '2026-04-30', time: '10:00', location: 'Selçuk', activity: '巴士前往 Izmir', type: 'transport', note: '車程 1.5hr', coords: [37.9496, 27.3683] },
+                        { id: 15, date: '2026-04-30', time: '13:00', location: 'Izmir', activity: '入住飯店', type: 'stay', note: '住宿 1 晚', coords: [38.4237, 27.1428] },
+                        // 5/1
+                        { id: 16, date: '2026-05-01', time: '10:00', location: 'Izmir', activity: '海濱漫步與觀光', type: 'visit', note: '自由活動', coords: [38.4237, 27.1428] },
+                        // 5/2
+                        { id: 17, date: '2026-05-02', time: '13:00', location: 'ADB 機場', activity: '飛往 ORK (太陽快運)', type: 'transport', note: '前往下一目的地', coords: [38.2924, 27.157] }
+                    ],
+                    
+                    map: null,
+                    mapMarkers: []
+                }
+            },
+            computed: {
+                sortedDates() {
+                    return [...new Set(this.itinerary.map(i => i.date))].sort()
+                },
+                dailyItinerary() {
+                    return this.itinerary.filter(i => i.date === this.selectedDate).sort((a,b) => a.time.localeCompare(b.time))
+                },
+                calculateTWD() {
+                    if(!this.expenseForm.amount) return 0;
+                    return Math.round(this.expenseForm.amount * this.rates[this.expenseForm.currency]);
+                },
+                totalSpent() {
+                    return this.expenses.reduce((sum, e) => sum + e.twd, 0);
+                }
+            },
+            watch: {
+                currentTab(val) {
+                    if (val === 'map') {
+                        setTimeout(() => this.initMap(), 100);
+                    }
+                },
+                selectedDate() {
+                    if (this.currentTab === 'map') this.updateMapMarkers();
+                    this.fetchWeather();
+                }
+            },
+            mounted() {
+                this.fetchWeather();
+            },
+            methods: {
+                getTypeColor(type) {
+                    if(type === 'transport') return 'bg-blue-400';
+                    if(type === 'stay') return 'bg-purple-400';
+                    return 'bg-teal-500';
+                },
+                getCategoryIcon(cat) {
+                    if(cat === 'transport') return 'fa-solid fa-plane';
+                    if(cat === 'stay') return 'fa-solid fa-bed';
+                    return 'fa-solid fa-bag-shopping';
+                },
+                formatDateShort(dateStr) {
+                    const d = new Date(dateStr);
+                    return `${d.getMonth()+1}/${d.getDate()}`;
+                },
+                formatNumber(num) {
+                    return new Intl.NumberFormat('zh-TW').format(num);
+                },
+                formatNote(note) {
+                    return note ? note.replace(/\n/g, '<br>') : '';
+                },
+                
+                // Weather Logic
+                async fetchWeather() {
+                    const firstItem = this.dailyItinerary[0];
+                    if (!firstItem || !firstItem.coords) { this.weather = null; return; }
+                    
+                    const [lat, lng] = firstItem.coords;
+                    try {
+                        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`);
+                        const data = await res.json();
+                        this.weather = data.current_weather;
+                    } catch (e) {
+                        console.error(e);
+                    }
+                },
+
+                // CRUD Logic
+                openAddModal() {
+                    this.isEditing = false;
+                    this.form = { id: null, time: '', location: '', activity: '', type: 'visit', note: '' };
+                    this.showModal = true;
+                },
+                openEditModal(item) {
+                    this.isEditing = true;
+                    this.form = { ...item };
+                    this.showModal = true;
+                },
+                deleteItem(id) {
+                    if(confirm('確定刪除此行程？')) {
+                        this.itinerary = this.itinerary.filter(i => i.id !== id);
+                        if(this.currentTab === 'map') this.updateMapMarkers();
+                    }
+                },
+                saveItem() {
+                    if (!this.form.location) { alert('請輸入地點'); return; }
+                    
+                    if (this.isEditing) {
+                        const idx = this.itinerary.findIndex(i => i.id === this.form.id);
+                        if (idx !== -1) this.itinerary[idx] = { ...this.itinerary[idx], ...this.form };
+                    } else {
+                        // 新增行程時，預設使用當天第一個景點的座標，避免地圖報錯
+                        const currentDayItems = this.dailyItinerary;
+                        const defaultCoords = currentDayItems.length > 0 ? currentDayItems[0].coords : [47.9, 106.9];
+                        
+                        this.itinerary.push({
+                            ...this.form,
+                            id: Date.now(),
+                            date: this.selectedDate,
+                            coords: defaultCoords
+                        });
+                    }
+                    this.showModal = false;
+                    this.fetchWeather();
+                    if(this.currentTab === 'map') this.updateMapMarkers();
+                },
+                closeModal() { this.showModal = false; },
+
+                // Expenses Logic
+                addExpense() {
+                    if (!this.expenseForm.amount) return;
+                    this.expenses.unshift({
+                        item: this.expenseForm.item || '未命名',
+                        original: parseFloat(this.expenseForm.amount),
+                        currency: this.expenseForm.currency,
+                        twd: this.calculateTWD,
+                        category: 'other'
+                    });
+                    this.expenseForm.amount = '';
+                    this.expenseForm.item = '';
+                },
+
+                // Map Logic
+                initMap() {
+                    if (this.map) {
+                        this.updateMapMarkers();
+                        this.map.invalidateSize();
+                        return;
+                    }
+                    this.map = L.map('map').setView([47.9, 106.9], 13);
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(this.map);
+                    this.updateMapMarkers();
+                },
+                updateMapMarkers() {
+                    if (!this.map) return;
+                    this.mapMarkers.forEach(m => this.map.removeLayer(m));
+                    this.mapMarkers = [];
+                    const points = [];
+                    this.dailyItinerary.forEach(item => {
+                        if (item.coords) {
+                            const marker = L.marker(item.coords)
+                                .bindPopup(`<b>${item.location}</b><br>${item.time} ${item.activity}`)
+                                .addTo(this.map);
+                            this.mapMarkers.push(marker);
+                            points.push(item.coords);
+                        }
+                    });
+                    if (points.length > 0) this.map.fitBounds(points, { padding: [50, 50] });
+                },
+                panMapTo(item) {
+                    if(this.map && item.coords) {
+                        this.map.flyTo(item.coords, 14);
+                        this.mapMarkers.find(m => m.getLatLng().lat === item.coords[0])?.openPopup();
+                    }
+                },
+                locateUser() {
+                    if (this.map) {
+                        this.map.locate({setView: true, maxZoom: 16});
+                        this.map.on('locationfound', e => {
+                            L.circle(e.latlng, {radius: 50, color: 'blue'}).addTo(this.map).bindPopup("你在這裡").openPopup();
+                        });
+                    }
+                },
+                alertText(phrase) {
+                    alert(`請展示給店員看：\n\n${this.transLang === 'mn' ? phrase.mn : phrase.tr}`);
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
