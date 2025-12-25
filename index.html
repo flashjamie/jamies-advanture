@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Solo Trip 2026: Expense Actions</title>
+    <title>Solo Trip 2026</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0F766E">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3177/3177440.png">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -27,7 +31,6 @@
         .modal-enter-from, .modal-leave-to { opacity: 0; transform: translateY(100%); }
         .numpad-btn:active { background-color: #e5e7eb; transform: scale(0.95); }
 
-        /* iPhone Safe Area */
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
         .pt-safe { padding-top: env(safe-area-inset-top); }
     </style>
@@ -170,21 +173,14 @@
                                     <div class="flex-1 min-w-0">
                                         <div class="flex justify-between items-start mb-0.5">
                                             <h4 class="font-bold text-slate-800 text-[15px] truncate pr-2">{{ exp.item }}</h4>
-                                            
                                             <div class="flex flex-col items-end gap-1">
                                                 <div class="font-extrabold text-slate-800 text-sm whitespace-nowrap">{{ exp.currency }} {{ formatNumber(exp.original) }}</div>
-                                                
                                                 <div class="flex items-center gap-3 mt-1">
-                                                    <button @click.stop="openEditExpenseModal(exp)" class="text-slate-300 hover:text-teal-600 transition p-1 -m-1">
-                                                        <i class="fa-solid fa-pen text-[11px]"></i>
-                                                    </button>
-                                                    <button @click.stop="deleteExpense(exp.id)" class="text-slate-300 hover:text-red-500 transition p-1 -m-1">
-                                                        <i class="fa-solid fa-trash text-[11px]"></i>
-                                                    </button>
+                                                    <button @click.stop="openEditExpenseModal(exp)" class="text-slate-300 hover:text-teal-600 transition p-1 -m-1"><i class="fa-solid fa-pen text-[11px]"></i></button>
+                                                    <button @click.stop="deleteExpense(exp.id)" class="text-slate-300 hover:text-red-500 transition p-1 -m-1"><i class="fa-solid fa-trash text-[11px]"></i></button>
                                                 </div>
                                             </div>
                                         </div>
-                                        
                                         <div class="flex justify-between items-end mt-1">
                                             <div class="flex flex-col gap-1.5 w-full">
                                                 <div class="text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
@@ -196,9 +192,7 @@
                                                     <span v-for="tag in exp.tags" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">#{{tag}}</span>
                                                 </div>
                                             </div>
-                                            <div class="text-[11px] font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded-lg shrink-0 whitespace-nowrap ml-2">
-                                                ≈ NT$ {{ formatNumber(exp.twd) }}
-                                            </div>
+                                            <div class="text-[11px] font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded-lg shrink-0 whitespace-nowrap ml-2">≈ NT$ {{ formatNumber(exp.twd) }}</div>
                                         </div>
                                     </div>
                                 </div>
@@ -344,6 +338,14 @@
     </div>
 
     <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('Service Worker registered', reg))
+                    .catch(err => console.log('Service Worker failed', err));
+            });
+        }
+
         const { createApp } = Vue
 
         createApp({
@@ -378,7 +380,6 @@
                         { id: 'wallet', name: '記帳', icon: 'fa-wallet' },
                     ],
 
-                    // Expenses Data (With IDs)
                     expenses: [
                          { id: 101, item: '機票: 高雄-首爾', original: 5496, currency: 'NTD', twd: 5496, category: 'transport', date: '4/24', payment: 'Card', tags: ['Flight', 'China Airlines'] },
                          { id: 102, item: '機票: 首爾-蒙古', original: 120100, currency: 'KRW', twd: 3003, category: 'transport', date: '4/24', payment: 'Card', tags: ['Flight', 'MIAT'] },
@@ -419,6 +420,35 @@
                     mapMarkers: []
                 }
             },
+            
+            // 重要：資料持久化設定
+            mounted() {
+                const savedExpenses = localStorage.getItem('trip_expenses');
+                if (savedExpenses) this.expenses = JSON.parse(savedExpenses);
+                
+                const savedItinerary = localStorage.getItem('trip_itinerary');
+                if (savedItinerary) this.itinerary = JSON.parse(savedItinerary);
+
+                this.fetchWeather();
+            },
+            watch: {
+                expenses: {
+                    handler(newVal) { localStorage.setItem('trip_expenses', JSON.stringify(newVal)); },
+                    deep: true
+                },
+                itinerary: {
+                    handler(newVal) { localStorage.setItem('trip_itinerary', JSON.stringify(newVal)); },
+                    deep: true
+                },
+                currentTab(val) {
+                    if (val === 'map') setTimeout(() => this.initMap(), 100);
+                },
+                selectedDate() {
+                    if (this.currentTab === 'map') this.updateMapMarkers();
+                    this.fetchWeather();
+                }
+            },
+
             computed: {
                 sortedDates() {
                     return [...new Set(this.itinerary.map(i => i.date))].sort()
@@ -450,21 +480,9 @@
                     return list;
                 }
             },
-            watch: {
-                currentTab(val) {
-                    if (val === 'map') {
-                        setTimeout(() => this.initMap(), 100);
-                    }
-                },
-                selectedDate() {
-                    if (this.currentTab === 'map') this.updateMapMarkers();
-                    this.fetchWeather();
-                }
-            },
-            mounted() {
-                this.fetchWeather();
-            },
+            
             methods: {
+                // Expenses Methods
                 openAddExpenseModal() {
                     this.isEditing = false;
                     this.expenseForm = { id: null, amount: '', currency: 'MNT', item: '', category: 'food', payment: 'Cash', tags: [] };
@@ -480,9 +498,7 @@
                         this.expenses = this.expenses.filter(e => e.id !== id);
                     }
                 },
-                closeExpenseModal() {
-                    this.showExpenseModal = false;
-                },
+                closeExpenseModal() { this.showExpenseModal = false; },
                 appendNumber(num) {
                     if (num === '.' && this.expenseForm.amount.includes('.')) return;
                     if (this.expenseForm.amount.length > 8) return;
@@ -493,7 +509,6 @@
                 },
                 saveExpense() {
                     if (!this.expenseForm.amount) return;
-                    
                     const newItem = {
                         item: this.expenseForm.item || '未命名消費',
                         original: parseFloat(this.expenseForm.amount),
@@ -504,55 +519,24 @@
                         payment: this.expenseForm.payment,
                         tags: this.expenseForm.tags
                     };
-
                     if (this.isEditing && this.expenseForm.id) {
-                        // Edit Mode
                         const idx = this.expenses.findIndex(e => e.id === this.expenseForm.id);
-                        if (idx !== -1) {
-                            this.expenses[idx] = { ...this.expenses[idx], ...newItem };
-                        }
+                        if (idx !== -1) this.expenses[idx] = { ...this.expenses[idx], ...newItem };
                     } else {
-                        // Add Mode
                         this.expenses.unshift({ ...newItem, id: Date.now() });
                     }
                     this.closeExpenseModal();
                 },
-                sortExpenses(key) {
-                    this.sortKey = key;
-                },
-                getCategoryIcon(catId) {
-                    const cat = this.categories.find(c => c.id === catId);
-                    return cat ? cat.icon : 'fa-solid fa-bag-shopping';
-                },
-                getCategoryColor(catId) {
-                    const colors = { transport: '#0D9488', food: '#0891b2', stay: '#EAB308', shop: '#F97316', other: '#64748B' };
-                    return colors[catId] || '#64748B';
-                },
-                getCategoryBg(catId) {
-                    const bgs = { transport: 'bg-teal-50', food: 'bg-cyan-50', stay: 'bg-yellow-50', shop: 'bg-orange-50', other: 'bg-slate-50' };
-                    return bgs[catId] || 'bg-slate-50';
-                },
+                sortExpenses(key) { this.sortKey = key; },
+                getCategoryIcon(catId) { return (this.categories.find(c => c.id === catId) || {}).icon || 'fa-solid fa-bag-shopping'; },
+                getCategoryColor(catId) { const colors = { transport: '#0D9488', food: '#0891b2', stay: '#EAB308', shop: '#F97316', other: '#64748B' }; return colors[catId] || '#64748B'; },
+                getCategoryBg(catId) { const bgs = { transport: 'bg-teal-50', food: 'bg-cyan-50', stay: 'bg-yellow-50', shop: 'bg-orange-50', other: 'bg-slate-50' }; return bgs[catId] || 'bg-slate-50'; },
 
-                getDotColor(type) {
-                    if(type === 'transport') return 'border-teal-600';
-                    if(type === 'stay') return 'border-yellow-500';
-                    return 'border-orange-500'; 
-                },
-                getDotInnerColor(type) {
-                    if(type === 'transport') return 'bg-teal-600';
-                    if(type === 'stay') return 'bg-yellow-500';
-                    return 'bg-orange-500';
-                },
-                getIconBgColor(type) {
-                    if(type === 'transport') return 'bg-teal-50';
-                    if(type === 'stay') return 'bg-yellow-50';
-                    return 'bg-orange-50';
-                },
-                getIconColor(type) {
-                    if(type === 'transport') return '#0D9488'; 
-                    if(type === 'stay') return '#EAB308'; 
-                    return '#F97316'; 
-                },
+                // Itinerary UI Helpers
+                getDotColor(type) { if(type === 'transport') return 'border-teal-600'; if(type === 'stay') return 'border-yellow-500'; return 'border-orange-500'; },
+                getDotInnerColor(type) { if(type === 'transport') return 'bg-teal-600'; if(type === 'stay') return 'bg-yellow-500'; return 'bg-orange-500'; },
+                getIconBgColor(type) { if(type === 'transport') return 'bg-teal-50'; if(type === 'stay') return 'bg-yellow-50'; return 'bg-orange-50'; },
+                getIconColor(type) { if(type === 'transport') return '#0D9488'; if(type === 'stay') return '#EAB308'; return '#F97316'; },
                 getItemIcon(item) {
                     if(item.type === 'transport') {
                         if(item.activity.includes('飛')) return 'fa-solid fa-plane-departure';
@@ -564,88 +548,46 @@
                     return 'fa-solid fa-camera';
                 },
                 
-                formatDateShort(dateStr) {
-                    const d = new Date(dateStr);
-                    return `${d.getMonth()+1}/${d.getDate()}`;
-                },
-                formatDateLong(dateStr) {
-                    const d = new Date(dateStr);
-                    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
-                },
-                getDayName(dateStr) {
-                    const d = new Date(dateStr);
-                    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-                    return days[d.getDay()];
-                },
-                formatNumber(num) {
-                    return new Intl.NumberFormat('zh-TW').format(num);
-                },
-                formatNote(note) {
-                    return note ? note.replace(/\n/g, '<br>') : '';
-                },
+                // Utils
+                formatDateShort(dateStr) { const d = new Date(dateStr); return `${d.getMonth()+1}/${d.getDate()}`; },
+                formatDateLong(dateStr) { const d = new Date(dateStr); const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`; },
+                getDayName(dateStr) { const d = new Date(dateStr); const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]; return days[d.getDay()]; },
+                formatNumber(num) { return new Intl.NumberFormat('zh-TW').format(num); },
+                formatNote(note) { return note ? note.replace(/\n/g, '<br>') : ''; },
                 
+                // Weather & Map (Standard)
                 async fetchWeather() {
                     const firstItem = this.dailyItinerary[0];
                     if (!firstItem || !firstItem.coords) { this.weather = null; return; }
-                    
                     const [lat, lng] = firstItem.coords;
                     try {
-                        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`);
-                        const data = await res.json();
-                        this.weather = {
-                            temp: Math.round(data.current_weather.temperature)
-                        };
-                    } catch (e) {
-                        console.error("Weather error:", e);
-                    }
+                        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`).catch(() => {});
+                        if(res) {
+                            const data = await res.json();
+                            this.weather = { temp: Math.round(data.current_weather.temperature) };
+                        }
+                    } catch (e) { console.log("Offline or API Error"); }
                 },
-
-                openAddItineraryModal() {
-                    this.isEditing = false;
-                    this.form = { id: null, time: '', location: '', activity: '', type: 'visit', note: '' };
-                    this.showItineraryModal = true;
-                },
-                openEditItineraryModal(item) {
-                    this.isEditing = true;
-                    this.form = { ...item };
-                    this.showItineraryModal = true;
-                },
-                deleteItineraryItem(id) {
-                    if(confirm('確定刪除此行程？')) {
-                        this.itinerary = this.itinerary.filter(i => i.id !== id);
-                        if(this.currentTab === 'map') this.updateMapMarkers();
-                    }
-                },
+                
+                openAddItineraryModal() { this.isEditing = false; this.form = { id: null, time: '', location: '', activity: '', type: 'visit', note: '' }; this.showItineraryModal = true; },
+                openEditItineraryModal(item) { this.isEditing = true; this.form = { ...item }; this.showItineraryModal = true; },
+                deleteItineraryItem(id) { if(confirm('確定刪除？')) this.itinerary = this.itinerary.filter(i => i.id !== id); },
                 saveItineraryItem() {
-                    if (!this.form.location) { alert('請輸入地點'); return; }
-                    
+                    if (!this.form.location) return;
                     if (this.isEditing) {
                         const idx = this.itinerary.findIndex(i => i.id === this.form.id);
                         if (idx !== -1) this.itinerary[idx] = { ...this.itinerary[idx], ...this.form };
                     } else {
                         const currentDayItems = this.dailyItinerary;
                         const defaultCoords = currentDayItems.length > 0 ? currentDayItems[0].coords : [47.9, 106.9];
-                        
-                        this.itinerary.push({
-                            ...this.form,
-                            id: Date.now(),
-                            date: this.selectedDate,
-                            coords: defaultCoords
-                        });
+                        this.itinerary.push({ ...this.form, id: Date.now(), date: this.selectedDate, coords: defaultCoords });
                     }
                     this.showItineraryModal = false;
-                    this.fetchWeather();
-                    if(this.currentTab === 'map') this.updateMapMarkers();
                 },
                 closeItineraryModal() { this.showItineraryModal = false; },
 
                 initMap() {
-                    if (this.map) {
-                        this.updateMapMarkers();
-                        this.map.invalidateSize();
-                        return;
-                    }
+                    if (this.map) { this.updateMapMarkers(); this.map.invalidateSize(); return; }
                     this.map = L.map('map').setView([47.9, 106.9], 13);
                     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(this.map);
                     this.updateMapMarkers();
@@ -657,9 +599,7 @@
                     const points = [];
                     this.dailyItinerary.forEach(item => {
                         if (item.coords) {
-                            const marker = L.marker(item.coords)
-                                .bindPopup(`<b>${item.location}</b><br>${item.time} ${item.activity}`)
-                                .addTo(this.map);
+                            const marker = L.marker(item.coords).addTo(this.map).bindPopup(item.location);
                             this.mapMarkers.push(marker);
                             points.push(item.coords);
                         }
@@ -675,9 +615,7 @@
                 locateUser() {
                     if (this.map) {
                         this.map.locate({setView: true, maxZoom: 16});
-                        this.map.on('locationfound', e => {
-                            L.circle(e.latlng, {radius: 50, color: 'blue'}).addTo(this.map).bindPopup("你在這裡").openPopup();
-                        });
+                        this.map.on('locationfound', e => { L.circle(e.latlng, {radius: 50, color: 'blue'}).addTo(this.map); });
                     }
                 }
             }
