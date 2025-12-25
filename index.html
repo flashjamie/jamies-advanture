@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Solo Trip 2026: iPhone Optimized</title>
+    <title>Solo Trip 2026: iPhone Fixed</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -14,15 +14,17 @@
 
     <style>
         :root { --primary: #0F766E; --bg-body: #F8FAFC; --secondary: #F59E0B; }
-        /* 使用 100dvh 解決 iOS Safari 網址列遮擋問題 */
-        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); -webkit-tap-highlight-color: transparent; height: 100dvh; }
+        
+        /* 核心修正：使用 100dvh 解決 iOS Safari 網址列遮擋 */
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); -webkit-tap-highlight-color: transparent; height: 100dvh; overflow: hidden; }
+        
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* 玻璃擬態卡片 */
+        /* 玻璃擬態 */
         .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
         
-        /* 日期選單 Active 狀態 */
+        /* 日期選單 Active */
         .date-chip.active { background-color: var(--primary); color: white; box-shadow: 0 8px 16px -4px rgba(15, 118, 110, 0.3); transform: translateY(-1px); }
         
         #map { height: 100%; width: 100%; border-radius: 1.5rem; z-index: 10; }
@@ -31,19 +33,20 @@
         .modal-enter-active, .modal-leave-active { transition: all 0.3s ease; }
         .modal-enter-from, .modal-leave-to { opacity: 0; transform: translateY(100%); }
         
-        /* 數字鍵盤按壓效果 */
+        /* 數字鍵盤按壓 */
         .numpad-btn:active { background-color: #e5e7eb; transform: scale(0.95); }
 
         /* iPhone Safe Area 修正 */
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        .pt-safe { padding-top: env(safe-area-inset-top); }
     </style>
 </head>
-<body class="text-slate-600 overflow-hidden flex flex-col">
+<body class="text-slate-600 flex flex-col h-full w-full">
 
-    <div id="app" class="flex flex-col h-full w-full bg-slate-50 relative shadow-2xl">
+    <div id="app" class="flex flex-col h-full w-full bg-slate-50 relative shadow-2xl overflow-hidden">
 
-        <header v-if="currentTab !== 'wallet'" class="bg-white pt-12 pb-4 px-6 rounded-b-[2rem] shadow-sm z-20 flex-none border-b border-slate-100">
-            <div class="flex justify-between items-end mb-5">
+        <header v-if="currentTab !== 'wallet'" class="bg-white pt-safe px-6 rounded-b-[2rem] shadow-sm z-20 flex-none border-b border-slate-100">
+            <div class="pt-4 flex justify-between items-end mb-5">
                 <div>
                     <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Jamie's Adventure</h1>
                     <div class="flex items-center gap-2 mt-1">
@@ -60,7 +63,7 @@
                 </div>
             </div>
 
-            <div class="flex gap-3 overflow-x-auto hide-scrollbar pb-2">
+            <div class="flex gap-3 overflow-x-auto hide-scrollbar pb-4">
                 <div v-for="date in sortedDates" :key="date" 
                      @click="selectedDate = date"
                      :class="['date-chip flex-none px-5 py-2.5 rounded-2xl text-sm font-bold cursor-pointer border border-slate-100 bg-white text-slate-400 transition-all', selectedDate === date ? 'active' : '']">
@@ -69,14 +72,14 @@
             </div>
         </header>
 
-        <header v-if="currentTab === 'wallet'" class="bg-white pt-12 pb-2 px-5 z-20 flex-none shadow-sm border-b border-slate-100">
-            <div class="flex items-center justify-between mb-4">
+        <header v-if="currentTab === 'wallet'" class="bg-white pt-safe px-5 z-20 flex-none shadow-sm border-b border-slate-100">
+            <div class="pt-4 flex items-center justify-between mb-4">
                 <h1 class="text-2xl font-extrabold text-slate-800">Expenses</h1>
                 <div class="flex gap-2">
-                    <button @click="sortExpenses('date')" class="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition" title="依日期排序">
+                    <button @click="sortExpenses('date')" class="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition">
                         <i class="fa-regular fa-calendar"></i>
                     </button>
-                    <button @click="sortExpenses('amount')" class="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition" title="依金額排序">
+                    <button @click="sortExpenses('amount')" class="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition">
                         <i class="fa-solid fa-arrow-down-short-wide"></i>
                     </button>
                 </div>
@@ -87,9 +90,9 @@
             </div>
         </header>
 
-        <main class="flex-1 overflow-y-auto hide-scrollbar relative">
+        <main class="flex-1 overflow-hidden relative w-full">
             
-            <div v-if="currentTab === 'schedule'" class="px-5 pt-6 pb-32">
+            <div v-if="currentTab === 'schedule'" class="h-full overflow-y-auto hide-scrollbar px-5 pt-6 pb-32">
                 <div class="mb-10 relative">
                     <div class="sticky top-0 z-20 pb-4 pt-2 bg-slate-50/95 backdrop-blur-sm w-full flex justify-between items-center">
                         <div class="flex items-baseline gap-2">
@@ -140,9 +143,6 @@
                                         <i class="fa-regular fa-clock text-slate-400 text-sm"></i>
                                         <span class="text-sm font-bold font-mono">{{ item.time }}</span>
                                     </div>
-                                    <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-bold transition-colors">
-                                        <i class="fa-solid fa-plus text-[10px]"></i> Cost
-                                    </button>
                                 </div>
                             </div>
                             <div v-if="item.type === 'transport' && index < dailyItinerary.length - 1" class="hidden pl-4 py-2 flex items-center gap-3 opacity-60">
@@ -177,8 +177,8 @@
                 </div>
             </div>
 
-            <div v-if="currentTab === 'wallet'" class="h-full flex flex-col">
-                <div class="flex-1 overflow-y-auto hide-scrollbar px-5 py-2 pb-48">
+            <div v-if="currentTab === 'wallet'" class="h-full relative w-full">
+                <div class="absolute inset-0 overflow-y-auto hide-scrollbar px-5 py-2 pb-48">
                     <div class="mb-6">
                         <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 pl-1">預算與花費</h3>
                         
@@ -217,17 +217,17 @@
                     </div>
                 </div>
 
-                <button @click="openAddExpenseModal" class="absolute bottom-[180px] right-5 w-14 h-14 bg-teal-600 text-white rounded-full shadow-lg shadow-teal-600/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-20">
+                <button @click="openAddExpenseModal" class="absolute bottom-24 right-5 w-14 h-14 bg-teal-600 text-white rounded-full shadow-lg shadow-teal-600/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-20">
                     <i class="fa-solid fa-plus text-xl"></i>
                 </button>
 
-                <div class="absolute bottom-[85px] left-0 right-0 bg-white border-t border-slate-100 px-6 pt-4 pb-6 z-10 flex justify-between items-center shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.05)]">
+                <div class="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-6 pt-4 pb-4 z-10 flex justify-between items-center shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.05)]">
                     <div class="flex flex-col">
                         <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">旅程總計 (TWD)</span>
                         <span class="text-2xl font-bold text-slate-800">NT$ {{ formatNumber(totalSpent) }}</span>
                     </div>
                     <div class="h-8 w-px bg-slate-100 mx-2"></div>
-                    <div class="flex flex-col items-end">
+                    <div class="flex flex-col items-end mr-2">
                         <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">剩餘預算</span>
                         <span class="text-lg font-bold text-teal-600">NT$ {{ formatNumber(130000 - totalSpent) }}</span>
                     </div>
@@ -236,7 +236,7 @@
 
         </main>
 
-        <nav class="bg-white border-t border-slate-100 px-8 h-[85px] flex justify-between items-start pt-3 pb-safe flex-none z-30 rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
+        <nav class="bg-white border-t border-slate-100 px-8 flex justify-between items-start pt-3 pb-safe h-[calc(60px+env(safe-area-inset-bottom))] flex-none z-30 rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
             <button v-for="tab in tabs" @click="currentTab = tab.id" :class="['flex flex-col items-center gap-1.5 transition-all w-16', currentTab === tab.id ? 'text-teal-600 scale-105' : 'text-slate-300']">
                 <i :class="['fa-solid text-xl', tab.icon]"></i>
                 <span class="text-[10px] font-bold">{{ tab.name }}</span>
@@ -264,7 +264,7 @@
 
         <transition name="modal">
             <div v-if="showExpenseModal" class="fixed inset-0 z-50 flex flex-col bg-slate-50">
-                <div class="flex items-center justify-between px-5 pt-12 pb-2">
+                <div class="flex items-center justify-between px-5 pt-safe mt-4 pb-2">
                     <button @click="closeExpenseModal" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
                     <h3 class="text-lg font-bold text-slate-800">Add Expense</h3>
                     <button @click="saveExpense" class="text-teal-600 font-bold text-base px-2">Save</button>
