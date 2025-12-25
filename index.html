@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Solo Trip 2026: iPhone Perfect</title>
+    <title>Solo Trip 2026: Expense Actions</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -15,7 +15,6 @@
     <style>
         :root { --primary: #0F766E; --bg-body: #F8FAFC; --secondary: #F59E0B; }
         
-        /* 關鍵修正：使用 100dvh 並鎖定 overflow，確保 App 不會超出螢幕 */
         body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); -webkit-tap-highlight-color: transparent; height: 100dvh; width: 100vw; overflow: hidden; margin: 0; padding: 0; }
         
         .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -161,32 +160,43 @@
             <div v-if="currentTab === 'wallet'" class="h-full w-full flex flex-col relative">
                 <div class="flex-1 overflow-y-auto hide-scrollbar px-5 py-2 pb-36">
                     <div class="mb-6">
-                        <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 pl-1">Recent</h3>
+                        <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 pl-1">預算與花費</h3>
                         <div class="space-y-3">
-                            <div v-for="(exp, idx) in filteredExpenses" :key="idx" class="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-slate-100 relative group">
+                            <div v-for="(exp, idx) in filteredExpenses" :key="exp.id" class="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-slate-100 relative group">
                                 <div class="flex items-center gap-4 w-full">
                                     <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-lg shrink-0" :class="getCategoryBg(exp.category)">
                                         <i :class="[getCategoryIcon(exp.category)]" :style="{color: getCategoryColor(exp.category)}"></i>
                                     </div>
                                     <div class="flex-1 min-w-0">
                                         <div class="flex justify-between items-start mb-0.5">
-                                            <h4 class="font-bold text-slate-800 text-[15px] truncate">{{ exp.item }}</h4>
-                                            <div class="text-right">
-                                                <div class="font-extrabold text-slate-800 text-sm">{{ exp.currency }} {{ formatNumber(exp.original) }}</div>
+                                            <h4 class="font-bold text-slate-800 text-[15px] truncate pr-2">{{ exp.item }}</h4>
+                                            
+                                            <div class="flex flex-col items-end gap-1">
+                                                <div class="font-extrabold text-slate-800 text-sm whitespace-nowrap">{{ exp.currency }} {{ formatNumber(exp.original) }}</div>
+                                                
+                                                <div class="flex items-center gap-3 mt-1">
+                                                    <button @click.stop="openEditExpenseModal(exp)" class="text-slate-300 hover:text-teal-600 transition p-1 -m-1">
+                                                        <i class="fa-solid fa-pen text-[11px]"></i>
+                                                    </button>
+                                                    <button @click.stop="deleteExpense(exp.id)" class="text-slate-300 hover:text-red-500 transition p-1 -m-1">
+                                                        <i class="fa-solid fa-trash text-[11px]"></i>
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div class="flex justify-between items-center">
-                                            <div class="flex flex-col gap-1">
-                                                <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                                        
+                                        <div class="flex justify-between items-end mt-1">
+                                            <div class="flex flex-col gap-1.5 w-full">
+                                                <div class="text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
                                                     <span>{{ exp.date }}</span>
-                                                    <span class="w-1 h-1 rounded-full bg-slate-300"></span>
+                                                    <span class="w-1 h-1 rounded-full bg-slate-300 shrink-0"></span>
                                                     <span>{{ exp.payment }}</span>
                                                 </div>
-                                                <div class="flex gap-1.5 mt-0.5" v-if="exp.tags && exp.tags.length">
-                                                    <span v-for="tag in exp.tags" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md">#{{tag}}</span>
+                                                <div class="flex flex-wrap gap-1.5" v-if="exp.tags && exp.tags.length">
+                                                    <span v-for="tag in exp.tags" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md whitespace-nowrap">#{{tag}}</span>
                                                 </div>
                                             </div>
-                                            <div class="text-[11px] font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
+                                            <div class="text-[11px] font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded-lg shrink-0 whitespace-nowrap ml-2">
                                                 ≈ NT$ {{ formatNumber(exp.twd) }}
                                             </div>
                                         </div>
@@ -250,7 +260,7 @@
             <div v-if="showExpenseModal" class="fixed inset-0 z-50 flex flex-col bg-slate-50 h-full w-full">
                 <div class="flex items-center justify-between px-5 pt-safe mt-4 pb-2 flex-none">
                     <button @click="closeExpenseModal" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
-                    <h3 class="text-lg font-bold text-slate-800">Add Expense</h3>
+                    <h3 class="text-lg font-bold text-slate-800">{{ isEditing ? 'Edit Expense' : 'Add Expense' }}</h3>
                     <button @click="saveExpense" class="text-teal-600 font-bold text-base px-2">Save</button>
                 </div>
 
@@ -312,6 +322,10 @@
                                 {{ method }}
                             </button>
                         </div>
+                        
+                        <button class="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-sm font-medium flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition">
+                            <i class="fa-solid fa-camera"></i> Upload Receipt
+                        </button>
                     </div>
                 </div>
 
@@ -341,13 +355,12 @@
                     searchQuery: '',
                     sortKey: 'date',
                     
-                    // Modals
                     showItineraryModal: false,
                     showExpenseModal: false,
                     isEditing: false,
                     
                     form: { id: null, time: '', location: '', activity: '', type: 'visit', note: '' },
-                    expenseForm: { amount: '', currency: 'MNT', item: '', category: 'food', payment: 'Cash', tags: [] },
+                    expenseForm: { id: null, amount: '', currency: 'MNT', item: '', category: 'food', payment: 'Cash', tags: [] },
 
                     rates: { 'NTD': 1, 'KRW': 0.024, 'MNT': 0.0095, 'TRY': 1.1, 'USD': 32.5, 'EUR': 34.5 },
                     categories: [
@@ -365,24 +378,23 @@
                         { id: 'wallet', name: '記帳', icon: 'fa-wallet' },
                     ],
 
-                    // Expenses Data (From CSV)
+                    // Expenses Data (With IDs)
                     expenses: [
-                         { item: '機票: 高雄-首爾', original: 5496, currency: 'NTD', twd: 5496, category: 'transport', date: '4/24', payment: 'Card', tags: ['Flight', 'China Airlines'] },
-                         { item: '機票: 首爾-蒙古', original: 120100, currency: 'KRW', twd: 3003, category: 'transport', date: '4/24', payment: 'Card', tags: ['Flight', 'MIAT'] },
-                         { item: '機票: 蒙古-伊斯坦堡', original: 1415600, currency: 'KRW', twd: 35390, category: 'transport', date: '4/26', payment: 'Card', tags: ['Flight', 'MIAT'] },
-                         { item: '機票: IST-ADB', original: 4000, currency: 'NTD', twd: 4000, category: 'transport', date: '4/29', payment: 'Card', tags: ['Flight', 'Turkish'] },
-                         { item: '機票: ADB-ORK', original: 5000, currency: 'NTD', twd: 5000, category: 'transport', date: '5/2', payment: 'Card', tags: ['Flight', 'SunExpress'] },
-                         { item: '交通: 蒙古機場巴士', original: 30000, currency: 'MNT', twd: 300, category: 'transport', date: '4/24', payment: 'Cash', tags: ['Bus'] },
-                         { item: '交通: ADB-Selçuk', original: 100, currency: 'NTD', twd: 100, category: 'transport', date: '4/29', payment: 'Cash', tags: ['Bus'] },
-                         { item: '交通: Selçuk-Izmir', original: 150, currency: 'NTD', twd: 150, category: 'transport', date: '4/30', payment: 'Cash', tags: ['Bus'] },
-                         { item: '住宿: 蒙古 (2晚)', original: 1600, currency: 'NTD', twd: 1600, category: 'stay', date: '4/24', payment: 'Card', tags: ['Hotel'] },
-                         { item: '體驗: 蒙古一日遊', original: 36, currency: 'USD', twd: 1152, category: 'ticket', date: '4/25', payment: 'Card', tags: ['Tour'] },
-                         { item: '住宿: 伊斯坦堡 (3晚)', original: 4500, currency: 'NTD', twd: 4500, category: 'stay', date: '4/26', payment: 'Card', tags: ['Hotel'] },
-                         { item: '住宿: Selçuk (1晚)', original: 2000, currency: 'NTD', twd: 2000, category: 'stay', date: '4/29', payment: 'Card', tags: ['Hotel'] },
-                         { item: '住宿: Izmir (1晚)', original: 4000, currency: 'NTD', twd: 4000, category: 'stay', date: '4/30', payment: 'Card', tags: ['Hotel'] },
+                         { id: 101, item: '機票: 高雄-首爾', original: 5496, currency: 'NTD', twd: 5496, category: 'transport', date: '4/24', payment: 'Card', tags: ['Flight', 'China Airlines'] },
+                         { id: 102, item: '機票: 首爾-蒙古', original: 120100, currency: 'KRW', twd: 3003, category: 'transport', date: '4/24', payment: 'Card', tags: ['Flight', 'MIAT'] },
+                         { id: 103, item: '機票: 蒙古-伊斯坦堡', original: 1415600, currency: 'KRW', twd: 35390, category: 'transport', date: '4/26', payment: 'Card', tags: ['Flight', 'MIAT'] },
+                         { id: 104, item: '機票: IST-ADB', original: 4000, currency: 'NTD', twd: 4000, category: 'transport', date: '4/29', payment: 'Card', tags: ['Flight', 'Turkish'] },
+                         { id: 105, item: '機票: ADB-ORK', original: 5000, currency: 'NTD', twd: 5000, category: 'transport', date: '5/2', payment: 'Card', tags: ['Flight', 'SunExpress'] },
+                         { id: 106, item: '交通: 蒙古機場巴士', original: 30000, currency: 'MNT', twd: 300, category: 'transport', date: '4/24', payment: 'Cash', tags: ['Bus'] },
+                         { id: 107, item: '交通: ADB-Selçuk', original: 100, currency: 'NTD', twd: 100, category: 'transport', date: '4/29', payment: 'Cash', tags: ['Bus'] },
+                         { id: 108, item: '交通: Selçuk-Izmir', original: 150, currency: 'NTD', twd: 150, category: 'transport', date: '4/30', payment: 'Cash', tags: ['Bus'] },
+                         { id: 109, item: '住宿: 蒙古 (2晚)', original: 1600, currency: 'NTD', twd: 1600, category: 'stay', date: '4/24', payment: 'Card', tags: ['Hotel'] },
+                         { id: 110, item: '體驗: 蒙古一日遊', original: 36, currency: 'USD', twd: 1152, category: 'ticket', date: '4/25', payment: 'Card', tags: ['Tour'] },
+                         { id: 111, item: '住宿: 伊斯坦堡 (3晚)', original: 4500, currency: 'NTD', twd: 4500, category: 'stay', date: '4/26', payment: 'Card', tags: ['Hotel'] },
+                         { id: 112, item: '住宿: Selçuk (1晚)', original: 2000, currency: 'NTD', twd: 2000, category: 'stay', date: '4/29', payment: 'Card', tags: ['Hotel'] },
+                         { id: 113, item: '住宿: Izmir (1晚)', original: 4000, currency: 'NTD', twd: 4000, category: 'stay', date: '4/30', payment: 'Card', tags: ['Hotel'] },
                     ],
 
-                    // Full Itinerary Data
                     itinerary: [
                         { id: 1, date: '2026-04-24', time: '08:45', location: '釜山金海機場', activity: '飛往首爾金浦 (大韓航空)', type: 'transport', note: '20kg行李直掛', coords: [35.1796, 129.0756] },
                         { id: 2, date: '2026-04-24', time: '10:30', location: '金浦機場', activity: '轉乘地鐵至仁川機場', type: 'transport', note: '轉機時間約 40min', coords: [37.5587, 126.7945] },
@@ -453,10 +465,20 @@
                 this.fetchWeather();
             },
             methods: {
-                // Expenses & Wallet Logic
                 openAddExpenseModal() {
-                    this.expenseForm = { amount: '', currency: 'MNT', item: '', category: 'food', payment: 'Cash', tags: [] };
+                    this.isEditing = false;
+                    this.expenseForm = { id: null, amount: '', currency: 'MNT', item: '', category: 'food', payment: 'Cash', tags: [] };
                     this.showExpenseModal = true;
+                },
+                openEditExpenseModal(exp) {
+                    this.isEditing = true;
+                    this.expenseForm = { ...exp, amount: exp.original.toString() }; 
+                    this.showExpenseModal = true;
+                },
+                deleteExpense(id) {
+                    if(confirm("確定刪除這筆支出嗎？")) {
+                        this.expenses = this.expenses.filter(e => e.id !== id);
+                    }
                 },
                 closeExpenseModal() {
                     this.showExpenseModal = false;
@@ -471,7 +493,8 @@
                 },
                 saveExpense() {
                     if (!this.expenseForm.amount) return;
-                    this.expenses.unshift({
+                    
+                    const newItem = {
                         item: this.expenseForm.item || '未命名消費',
                         original: parseFloat(this.expenseForm.amount),
                         currency: this.expenseForm.currency,
@@ -480,7 +503,18 @@
                         date: 'Today, Now',
                         payment: this.expenseForm.payment,
                         tags: this.expenseForm.tags
-                    });
+                    };
+
+                    if (this.isEditing && this.expenseForm.id) {
+                        // Edit Mode
+                        const idx = this.expenses.findIndex(e => e.id === this.expenseForm.id);
+                        if (idx !== -1) {
+                            this.expenses[idx] = { ...this.expenses[idx], ...newItem };
+                        }
+                    } else {
+                        // Add Mode
+                        this.expenses.unshift({ ...newItem, id: Date.now() });
+                    }
                     this.closeExpenseModal();
                 },
                 sortExpenses(key) {
@@ -499,7 +533,6 @@
                     return bgs[catId] || 'bg-slate-50';
                 },
 
-                // Itinerary Logic
                 getDotColor(type) {
                     if(type === 'transport') return 'border-teal-600';
                     if(type === 'stay') return 'border-yellow-500';
