@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Solo Trip 2026: 完整版</title>
+    <title>Solo Trip 2026: 預算與行程完整版</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
     <style>
-        :root { --primary: #0F766E; --bg-body: #F8FAFC; }
+        :root { --primary: #0F766E; --bg-body: #F8FAFC; --secondary: #F59E0B; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); -webkit-tap-highlight-color: transparent; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
         /* 玻璃擬態卡片 */
         .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.6); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
@@ -26,15 +27,18 @@
         #map { height: 100%; width: 100%; border-radius: 1.5rem; z-index: 10; }
         
         /* Modal 動畫 */
-        .modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
-        .modal-enter-from, .modal-leave-to { opacity: 0; }
+        .modal-enter-active, .modal-leave-active { transition: all 0.3s ease; }
+        .modal-enter-from, .modal-leave-to { opacity: 0; transform: translateY(100%); }
+        
+        /* 數字鍵盤按壓效果 */
+        .numpad-btn:active { background-color: #e5e7eb; transform: scale(0.95); }
     </style>
 </head>
 <body class="text-slate-600 h-screen flex flex-col overflow-hidden">
 
     <div id="app" class="flex flex-col h-full max-w-md mx-auto w-full bg-slate-50 relative shadow-2xl">
 
-        <header class="bg-white pt-10 pb-4 px-6 rounded-b-[2rem] shadow-sm z-20 flex-none border-b border-slate-100">
+        <header v-if="currentTab !== 'wallet'" class="bg-white pt-10 pb-4 px-6 rounded-b-[2rem] shadow-sm z-20 flex-none border-b border-slate-100">
             <div class="flex justify-between items-end mb-5">
                 <div>
                     <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Jamie's Adventure</h1>
@@ -61,52 +65,99 @@
             </div>
         </header>
 
-        <main class="flex-1 overflow-y-auto hide-scrollbar p-6 space-y-6 relative pb-24">
-            
-            <div v-if="currentTab === 'schedule'" class="space-y-4">
-                <div class="flex justify-between items-center px-1 mb-2">
-                    <div class="flex items-center gap-3">
-                        <h2 class="text-lg font-bold text-slate-800">今日安排</h2>
-                        <div v-if="weather" class="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-100 flex items-center shadow-sm">
-                            <i class="fa-solid fa-cloud-sun text-orange-400 mr-1"></i> {{ weather.temp }}°C
-                        </div>
-                    </div>
-                    <button @click="openAddModal" class="bg-teal-600 text-white w-8 h-8 rounded-full shadow-lg flex items-center justify-center hover:bg-teal-700 transition active:scale-90">
-                        <i class="fa-solid fa-plus text-sm"></i>
+        <header v-if="currentTab === 'wallet'" class="bg-white pt-10 pb-2 px-5 z-20 flex-none shadow-sm border-b border-slate-100">
+            <div class="flex items-center justify-between mb-4">
+                <h1 class="text-2xl font-extrabold text-slate-800">Expenses</h1>
+                <div class="flex gap-2">
+                    <button @click="sortExpenses('date')" class="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition" title="依日期排序">
+                        <i class="fa-regular fa-calendar"></i>
+                    </button>
+                    <button @click="sortExpenses('amount')" class="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition" title="依金額排序">
+                        <i class="fa-solid fa-arrow-down-short-wide"></i>
                     </button>
                 </div>
+            </div>
+            <div class="relative mb-4">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-400 text-sm"></i>
+                <input type="text" v-model="searchQuery" placeholder="搜尋商家、標籤 (#機票)..." class="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pl-10 pr-4 text-sm outline-none focus:border-teal-500 transition">
+            </div>
+        </header>
 
-                <div v-if="dailyItinerary.length > 0" class="space-y-4">
-                    <div v-for="item in dailyItinerary" :key="item.id" class="glass-card rounded-3xl p-5 relative overflow-hidden group transition-all hover:translate-y-[-2px]">
-                        <div class="absolute left-0 top-0 bottom-0 w-1.5" :class="getTypeColor(item.type)"></div>
-                        
-                        <div class="pl-3">
-                            <div class="flex justify-between items-start mb-1">
-                                <span class="text-xs font-black font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded-lg tracking-tight">{{ item.time }}</span>
-                                <div class="flex gap-3 opacity-80">
-                                    <button @click="openEditModal(item)" class="text-slate-300 hover:text-teal-600 transition"><i class="fa-solid fa-pen text-xs"></i></button>
-                                    <button @click="deleteItem(item.id)" class="text-slate-300 hover:text-red-400 transition"><i class="fa-solid fa-trash text-xs"></i></button>
+        <main class="flex-1 overflow-y-auto hide-scrollbar relative pb-24">
+            
+            <div v-if="currentTab === 'schedule'" class="px-5 pt-6 pb-20">
+                <div class="mb-10 relative">
+                    <div class="sticky top-0 z-20 pb-4 pt-2 bg-slate-50/95 backdrop-blur-sm w-full flex justify-between items-center">
+                        <div class="flex items-baseline gap-2">
+                            <h2 class="text-xl font-bold tracking-tight text-slate-800">{{ formatDateLong(selectedDate) }}</h2>
+                            <span class="text-xs font-medium text-slate-400 bg-slate-200/50 px-2 py-1 rounded-md">{{ getDayName(selectedDate) }}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <div v-if="weather" class="text-xs font-bold text-slate-500 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100 shadow-sm flex items-center">
+                                <i class="fa-solid fa-cloud-sun text-orange-400 mr-1.5"></i> {{ weather.temp }}°C
+                            </div>
+                            <button @click="openAddItineraryModal" class="bg-teal-600 text-white w-8 h-8 rounded-lg shadow-lg flex items-center justify-center hover:bg-teal-700 transition active:scale-95">
+                                <i class="fa-solid fa-plus text-sm"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-if="dailyItinerary.length > 0" class="relative pl-4 ml-2 border-l-2 border-dashed border-gray-300 space-y-6">
+                        <div v-for="(item, index) in dailyItinerary" :key="item.id" class="relative group">
+                            <div class="absolute top-8 -left-[25px] h-4 w-4 rounded-full bg-slate-50 border-2 flex items-center justify-center z-10" :class="getDotColor(item.type)">
+                                <div class="h-1.5 w-1.5 rounded-full" :class="getDotInnerColor(item.type)"></div>
+                            </div>
+                            <div class="bg-white rounded-2xl p-5 shadow-[0_2px_8px_-1px_rgba(0,0,0,0.05)] border border-gray-100 flex flex-col gap-4 transition-all hover:shadow-md hover:-translate-y-0.5">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex gap-4 w-full">
+                                        <div class="h-12 w-12 rounded-2xl flex items-center justify-center shrink-0" :class="getIconBgColor(item.type)">
+                                            <i :class="[getItemIcon(item), 'text-lg']" :style="{ color: getIconColor(item.type) }"></i>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex justify-between items-start">
+                                                <h3 class="text-lg font-bold text-slate-800 leading-tight truncate pr-2">{{ item.location }}</h3>
+                                                <div class="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button @click.stop="openEditItineraryModal(item)" class="text-slate-300 hover:text-teal-600"><i class="fa-solid fa-pen text-xs"></i></button>
+                                                    <button @click.stop="deleteItineraryItem(item.id)" class="text-slate-300 hover:text-red-400"><i class="fa-solid fa-trash text-xs"></i></button>
+                                                </div>
+                                            </div>
+                                            <p class="text-sm text-slate-500 font-medium mt-0.5">{{ item.activity }}</p>
+                                            <div v-if="item.note" class="mt-2 flex flex-wrap gap-2">
+                                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-50 text-[11px] font-medium text-slate-500 border border-slate-100">
+                                                    <i class="fa-solid fa-circle-info text-slate-300 text-[10px]"></i>
+                                                    {{ item.note }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center justify-between pt-3 border-t border-gray-50 mt-1">
+                                    <div class="flex items-center gap-2 text-slate-700">
+                                        <i class="fa-regular fa-clock text-slate-400 text-sm"></i>
+                                        <span class="text-sm font-bold font-mono">{{ item.time }}</span>
+                                    </div>
+                                    <button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-bold transition-colors">
+                                        <i class="fa-solid fa-plus text-[10px]"></i> Cost
+                                    </button>
                                 </div>
                             </div>
-                            
-                            <h3 class="text-lg font-bold text-slate-800 mb-1 leading-tight">{{ item.location }}</h3>
-                            <p class="text-sm text-slate-600 font-medium mb-2">{{ item.activity }}</p>
-                            
-                            <div v-if="item.note" class="bg-slate-50 p-3 rounded-xl text-xs text-slate-500 leading-relaxed border border-slate-100 mt-2">
-                                <i class="fa-solid fa-circle-info text-teal-400 mr-1"></i> 
-                                <span v-html="formatNote(item.note)"></span>
+                            <div v-if="item.type === 'transport' && index < dailyItinerary.length - 1" class="hidden pl-4 py-2 flex items-center gap-3 opacity-60">
+                                <i class="fa-solid fa-hourglass-half text-slate-400 text-sm"></i>
+                                <span class="text-xs font-medium text-slate-400">移動中...</span>
                             </div>
                         </div>
                     </div>
-                </div>
-                
-                <div v-else class="text-center py-16 opacity-40">
-                    <i class="fa-solid fa-mug-hot text-4xl mb-3 text-slate-300"></i>
-                    <p class="text-sm">本日無行程，點擊 + 新增</p>
+                    <div v-else class="text-center py-20 opacity-40">
+                        <div class="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fa-solid fa-map-location-dot text-2xl text-slate-400"></i>
+                        </div>
+                        <p class="text-sm font-bold text-slate-500">本日尚無行程</p>
+                        <p class="text-xs text-slate-400 mt-1">點擊上方 + 新增第一個景點</p>
+                    </div>
                 </div>
             </div>
 
-            <div v-show="currentTab === 'map'" class="h-full flex flex-col">
+            <div v-show="currentTab === 'map'" class="h-full flex flex-col p-6">
                 <div class="bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 flex-1 relative overflow-hidden">
                     <div id="map"></div>
                     <button @click="locateUser" class="absolute bottom-6 right-6 bg-white text-slate-800 w-12 h-12 rounded-full shadow-lg z-[400] flex items-center justify-center hover:text-teal-600 transition">
@@ -122,68 +173,71 @@
                 </div>
             </div>
 
-            <div v-if="currentTab === 'wallet'" class="space-y-6">
-                <div class="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-6 rounded-[2rem] shadow-xl relative overflow-hidden">
-                    <div class="absolute -right-6 -top-6 w-32 h-32 bg-teal-500 opacity-20 rounded-full blur-2xl"></div>
-                    <div class="relative z-10">
-                        <div class="text-3xl font-bold mb-4">NT$ {{ formatNumber(totalSpent) }}</div>
-                        <div class="text-xs opacity-50 uppercase tracking-widest">Total Expenses</div>
-                    </div>
-                </div>
-
-                <div class="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-                    <h3 class="text-sm font-bold text-slate-700 mb-3">快速記帳</h3>
-                    <div class="flex gap-2 mb-3">
-                        <input type="number" v-model="expenseForm.amount" placeholder="金額" class="w-2/3 bg-slate-50 border-none rounded-xl px-4 py-3 font-bold outline-none focus:ring-2 ring-teal-500">
-                        <select v-model="expenseForm.currency" class="w-1/3 bg-slate-50 border-none rounded-xl px-2 py-3 text-sm font-bold outline-none">
-                            <option value="MNT">🇲🇳 蒙圖</option>
-                            <option value="TRY">🇹🇷 里拉</option>
-                            <option value="KRW">🇰🇷 韓元</option>
-                            <option value="USD">🇺🇸 美金</option>
-                            <option value="NTD">🇹🇼 台幣</option>
-                        </select>
-                    </div>
-                    <input type="text" v-model="expenseForm.item" placeholder="項目" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm mb-4 outline-none">
-                    <button @click="addExpense" class="w-full bg-teal-600 text-white py-3 rounded-xl text-sm font-bold shadow-lg shadow-teal-200">加入 (約 NT$ {{ calculateTWD }})</button>
-                </div>
-
-                <div class="space-y-3 pb-8">
-                    <div v-for="(exp, idx) in expenses" :key="idx" class="bg-white p-4 rounded-2xl flex justify-between items-center border border-slate-50">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 text-sm">
-                                <i :class="getCategoryIcon(exp.category)"></i>
-                            </div>
-                            <div>
-                                <div class="font-bold text-slate-700 text-sm">{{ exp.item }}</div>
-                                <div class="text-[10px] text-slate-400 font-mono">{{ exp.currency }} {{ formatNumber(exp.original) }}</div>
+            <div v-if="currentTab === 'wallet'" class="h-full flex flex-col">
+                <div class="flex-1 overflow-y-auto hide-scrollbar px-5 py-2 pb-32">
+                    <div class="mb-6">
+                        <h3 class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 pl-1">All Expenses</h3>
+                        
+                        <div class="space-y-3">
+                            <div v-for="(exp, idx) in filteredExpenses" :key="idx" class="bg-white p-4 rounded-2xl flex justify-between items-center shadow-[0_2px_8px_-1px_rgba(0,0,0,0.03)] border border-slate-100 relative overflow-hidden group">
+                                <div class="flex items-center gap-4 w-full">
+                                    <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-lg shrink-0" :class="getCategoryBg(exp.category)">
+                                        <i :class="[getCategoryIcon(exp.category)]" :style="{color: getCategoryColor(exp.category)}"></i>
+                                    </div>
+                                    
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex justify-between items-start mb-0.5">
+                                            <h4 class="font-bold text-slate-800 text-[15px] truncate">{{ exp.item }}</h4>
+                                            <div class="text-right">
+                                                <div class="font-extrabold text-slate-800 text-sm">{{ exp.currency }} {{ formatNumber(exp.original) }}</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="flex justify-between items-center">
+                                            <div class="flex flex-col gap-1">
+                                                <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                                                    <span>{{ exp.date }}</span>
+                                                    <span class="w-1 h-1 rounded-full bg-slate-300"></span>
+                                                    <span>{{ exp.payment || 'Cash' }}</span>
+                                                </div>
+                                                <div class="flex gap-1.5 mt-0.5" v-if="exp.tags && exp.tags.length">
+                                                    <span v-for="tag in exp.tags" class="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md">#{{tag}}</span>
+                                                </div>
+                                            </div>
+                                            <div class="text-[11px] font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">
+                                                ≈ NT$ {{ formatNumber(exp.twd) }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="absolute bottom-[85px] left-0 right-0 bg-white border-t border-slate-100 px-6 py-4 z-10 flex justify-between items-center shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.05)]">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">旅程總計 (TWD)</span>
+                        <span class="text-2xl font-bold text-slate-800">NT$ {{ formatNumber(totalSpent) }}</span>
+                    </div>
+                    <div class="flex items-center gap-3">
                         <div class="text-right">
-                            <div class="font-bold text-slate-800 text-sm">NT$ {{ formatNumber(exp.twd) }}</div>
-                            <button @click="expenses.splice(idx, 1)" class="text-[10px] text-red-300 mt-1">刪除</button>
+                            <div class="text-[10px] font-bold text-slate-400 uppercase">交通</div>
+                            <div class="text-xs font-bold text-teal-600">53k</div>
+                        </div>
+                        <div class="h-6 w-px bg-slate-200"></div>
+                        <div class="text-right">
+                            <div class="text-[10px] font-bold text-slate-400 uppercase">食宿</div>
+                            <div class="text-xs font-bold text-orange-500">12k</div>
                         </div>
                     </div>
                 </div>
+
+                <button @click="openAddExpenseModal" class="absolute bottom-28 right-5 w-14 h-14 bg-teal-600 text-white rounded-full shadow-lg shadow-teal-600/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-20">
+                    <i class="fa-solid fa-plus text-xl"></i>
+                </button>
             </div>
 
-            <div v-if="currentTab === 'translate'" class="space-y-6">
-                <div class="grid grid-cols-2 gap-4">
-                    <button @click="transLang = 'mn'" :class="['p-4 rounded-2xl border text-center transition', transLang === 'mn' ? 'bg-teal-600 text-white border-teal-600 shadow-lg shadow-teal-200' : 'bg-white border-slate-100 text-slate-400']">
-                        <div class="text-2xl mb-1">🇲🇳</div>
-                        <div class="text-xs font-bold">蒙古語</div>
-                    </button>
-                    <button @click="transLang = 'tr'" :class="['p-4 rounded-2xl border text-center transition', transLang === 'tr' ? 'bg-teal-600 text-white border-teal-600 shadow-lg shadow-teal-200' : 'bg-white border-slate-100 text-slate-400']">
-                        <div class="text-2xl mb-1">🇹🇷</div>
-                        <div class="text-xs font-bold">土耳其語</div>
-                    </button>
-                </div>
-                <div class="space-y-3">
-                    <div v-for="phrase in phrases" class="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm" @click="alertText(phrase)">
-                        <div class="text-xs text-slate-400 mb-1">{{ phrase.tw }}</div>
-                        <div class="text-xl font-bold text-slate-800">{{ transLang === 'mn' ? phrase.mn : phrase.tr }}</div>
-                    </div>
-                </div>
-            </div>
         </main>
 
         <nav class="bg-white border-t border-slate-100 px-8 h-[85px] flex justify-between items-center flex-none z-30 rounded-t-[2rem] shadow-[0_-10px_40px_rgba(0,0,0,0.03)]">
@@ -194,40 +248,110 @@
         </nav>
 
         <transition name="modal">
-            <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <div v-if="showItineraryModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
                 <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl transition-all transform">
                     <h3 class="text-lg font-bold text-slate-800 mb-4">{{ isEditing ? '編輯行程' : '新增行程' }}</h3>
-                    
                     <div class="space-y-3">
-                        <div>
-                            <label class="text-xs font-bold text-slate-400 ml-1">時間</label>
-                            <input type="time" v-model="form.time" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition">
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-400 ml-1">地點</label>
-                            <input type="text" v-model="form.location" placeholder="例如：伊斯坦堡機場" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition">
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-400 ml-1">活動內容</label>
-                            <input type="text" v-model="form.activity" placeholder="做什麼？" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition">
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-400 ml-1">類型</label>
-                            <select v-model="form.type" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none">
-                                <option value="visit">📷 景點</option>
-                                <option value="transport">✈️ 交通</option>
-                                <option value="stay">🏨 住宿</option>
+                        <div><label class="text-xs font-bold text-slate-400 ml-1">時間</label><input type="time" v-model="form.time" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition"></div>
+                        <div><label class="text-xs font-bold text-slate-400 ml-1">地點</label><input type="text" v-model="form.location" placeholder="例如：伊斯坦堡機場" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition"></div>
+                        <div><label class="text-xs font-bold text-slate-400 ml-1">活動內容</label><input type="text" v-model="form.activity" placeholder="做什麼？" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition"></div>
+                        <div><label class="text-xs font-bold text-slate-400 ml-1">類型</label><select v-model="form.type" class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none"><option value="visit">📷 景點</option><option value="transport">✈️ 交通</option><option value="stay">🏨 住宿</option></select></div>
+                        <div><label class="text-xs font-bold text-slate-400 ml-1">備註</label><textarea v-model="form.note" rows="2" placeholder="備註..." class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition"></textarea></div>
+                    </div>
+                    <div class="flex gap-3 mt-6">
+                        <button @click="closeItineraryModal" class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 font-bold text-sm">取消</button>
+                        <button @click="saveItineraryItem" class="flex-1 py-3 rounded-xl bg-teal-600 text-white font-bold text-sm shadow-lg shadow-teal-200">儲存</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <transition name="modal">
+            <div v-if="showExpenseModal" class="fixed inset-0 z-50 flex flex-col bg-slate-50">
+                <div class="flex items-center justify-between px-5 pt-10 pb-2">
+                    <button @click="closeExpenseModal" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    <h3 class="text-lg font-bold text-slate-800">Add Expense</h3>
+                    <button @click="saveExpense" class="text-teal-600 font-bold text-base px-2">Save</button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto hide-scrollbar px-6 pb-4">
+                    <div class="bg-white rounded-3xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] p-6 mb-5 flex flex-col items-center relative overflow-hidden">
+                        <div class="absolute top-0 right-0 w-32 h-32 bg-teal-50 rounded-full -mr-10 -mt-10 blur-2xl opacity-60"></div>
+                        
+                        <div class="relative z-10 flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl mb-2 cursor-pointer border border-slate-100">
+                            <div class="w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center text-[10px] font-bold">M</div>
+                            <select v-model="expenseForm.currency" class="bg-transparent text-sm font-bold text-slate-700 outline-none appearance-none">
+                                <option value="MNT">MNT</option>
+                                <option value="KRW">KRW</option>
+                                <option value="TRY">TRY</option>
+                                <option value="USD">USD</option>
+                                <option value="NTD">NTD</option>
                             </select>
+                            <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 pointer-events-none"></i>
                         </div>
-                        <div>
-                            <label class="text-xs font-bold text-slate-400 ml-1">備註</label>
-                            <textarea v-model="form.note" rows="2" placeholder="備註..." class="w-full bg-slate-50 p-3 rounded-xl border border-slate-100 outline-none focus:ring-2 ring-teal-500 transition"></textarea>
+
+                        <div class="relative z-10 text-center w-full mb-3">
+                            <span class="text-5xl font-bold text-slate-800 tracking-tight">{{ expenseForm.amount || '0' }}</span>
+                        </div>
+
+                        <div v-if="expenseForm.amount" class="relative z-10 bg-yellow-50 text-yellow-700 px-3 py-1.5 rounded-lg text-sm font-medium border border-yellow-100 flex items-center gap-2 animate-pulse">
+                            <i class="fa-solid fa-calculator text-xs"></i>
+                            約 TWD {{ calculateTWD }}
+                        </div>
+                        <div v-else class="relative z-10 text-xs text-slate-400 font-medium">
+                            1 {{expenseForm.currency}} = {{rates[expenseForm.currency]}} TWD
                         </div>
                     </div>
 
-                    <div class="flex gap-3 mt-6">
-                        <button @click="closeModal" class="flex-1 py-3 rounded-xl bg-slate-100 text-slate-500 font-bold text-sm">取消</button>
-                        <button @click="saveItem" class="flex-1 py-3 rounded-xl bg-teal-600 text-white font-bold text-sm shadow-lg shadow-teal-200">儲存</button>
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <button class="bg-white p-3 rounded-2xl flex items-center gap-3 shadow-sm border border-slate-100">
+                                <div class="w-8 h-8 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center"><i class="fa-regular fa-calendar text-sm"></i></div>
+                                <span class="text-sm font-medium text-slate-700">Today</span>
+                            </button>
+                            <button class="bg-white p-3 rounded-2xl flex items-center gap-3 shadow-sm border border-slate-100">
+                                <div class="w-8 h-8 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center"><i class="fa-solid fa-pen text-sm"></i></div>
+                                <input v-model="expenseForm.item" placeholder="Add note..." class="bg-transparent w-full text-sm outline-none placeholder:text-slate-400 text-slate-700">
+                            </button>
+                        </div>
+
+                        <div class="bg-white rounded-3xl p-4 shadow-sm border border-slate-100">
+                            <div class="flex justify-between items-center mb-3 px-1">
+                                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Category</span>
+                            </div>
+                            <div class="grid grid-cols-4 gap-3">
+                                <div v-for="cat in categories" :key="cat.id" 
+                                     @click="expenseForm.category = cat.id"
+                                     :class="['flex flex-col items-center gap-1 cursor-pointer p-2 rounded-xl transition', expenseForm.category === cat.id ? 'bg-teal-50 ring-2 ring-teal-500/20' : 'hover:bg-slate-50']">
+                                    <div :class="['w-10 h-10 rounded-xl flex items-center justify-center text-lg transition', expenseForm.category === cat.id ? 'bg-teal-600 text-white shadow-lg shadow-teal-200' : 'bg-slate-100 text-slate-400']">
+                                        <i :class="cat.icon"></i>
+                                    </div>
+                                    <span :class="['text-[10px] font-medium', expenseForm.category === cat.id ? 'text-teal-700' : 'text-slate-400']">{{ cat.name }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 flex gap-2">
+                            <button v-for="method in ['Cash', 'Card', 'Mobile']" 
+                                    @click="expenseForm.payment = method"
+                                    :class="['flex-1 py-2 rounded-xl text-xs font-bold transition', expenseForm.payment === method ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-50 text-slate-400']">
+                                {{ method }}
+                            </button>
+                        </div>
+                        
+                        <button class="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-sm font-medium flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition">
+                            <i class="fa-solid fa-camera"></i> Upload Receipt
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-t-[2.5rem] shadow-[0_-4px_20px_rgba(0,0,0,0.03)] pt-6 pb-8 px-6 z-20">
+                    <div class="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-6"></div>
+                    <div class="grid grid-cols-3 gap-y-5 gap-x-8">
+                        <button v-for="n in [1,2,3,4,5,6,7,8,9]" :key="n" @click="appendNumber(n)" class="numpad-btn text-2xl font-semibold text-slate-800 h-12 rounded-full transition">{{ n }}</button>
+                        <button @click="appendNumber('.')" class="numpad-btn text-2xl font-semibold text-slate-800 h-12 rounded-full transition">.</button>
+                        <button @click="appendNumber(0)" class="numpad-btn text-2xl font-semibold text-slate-800 h-12 rounded-full transition">0</button>
+                        <button @click="backspaceNumber" class="numpad-btn flex items-center justify-center h-12 rounded-full text-slate-800 hover:text-red-500 transition"><i class="fa-solid fa-delete-left text-xl"></i></button>
                     </div>
                 </div>
             </div>
@@ -244,48 +368,53 @@
                     currentTab: 'schedule',
                     selectedDate: '2026-04-24',
                     weather: null,
-                    transLang: 'mn',
+                    searchQuery: '',
+                    sortKey: 'date', // 'date' or 'amount'
                     
-                    // Modal 狀態
-                    showModal: false,
+                    // Modals
+                    showItineraryModal: false,
+                    showExpenseModal: false,
                     isEditing: false,
+                    
+                    // Forms
                     form: { id: null, time: '', location: '', activity: '', type: 'visit', note: '' },
+                    expenseForm: { amount: '', currency: 'MNT', item: '', category: 'food', payment: 'Cash', tags: [] },
 
+                    // Config
                     rates: { 'NTD': 1, 'KRW': 0.024, 'MNT': 0.0095, 'TRY': 1.1, 'USD': 32.5, 'EUR': 34.5 },
-                    expenseForm: { amount: '', currency: 'MNT', item: '' },
+                    categories: [
+                        { id: 'transport', name: 'Transport', icon: 'fa-solid fa-plane' },
+                        { id: 'food', name: 'Food', icon: 'fa-solid fa-utensils' },
+                        { id: 'stay', name: 'Hotel', icon: 'fa-solid fa-bed' },
+                        { id: 'shop', name: 'Shop', icon: 'fa-solid fa-bag-shopping' },
+                        { id: 'ticket', name: 'Exp.', icon: 'fa-solid fa-ticket' },
+                        { id: 'other', name: 'More', icon: 'fa-solid fa-ellipsis' }
+                    ],
 
                     tabs: [
                         { id: 'schedule', name: '行程', icon: 'fa-layer-group' },
                         { id: 'map', name: '地圖', icon: 'fa-map-location-dot' },
                         { id: 'wallet', name: '記帳', icon: 'fa-wallet' },
-                        { id: 'translate', name: '翻譯', icon: 'fa-language' },
                     ],
 
-                    phrases: [
-                        { tw: '你好', mn: 'Sain baina uu', tr: 'Merhaba' },
-                        { tw: '謝謝', mn: 'Bayarlalaa', tr: 'Teşekkürler' },
-                        { tw: '好吃', mn: 'Amttai', tr: 'Lezzetli' },
-                        { tw: '這個多少錢?', mn: 'Ene khed ve?', tr: 'Bu ne kadar?' },
-                        { tw: '廁所在哪?', mn: 'Noil haana ve?', tr: 'Tuvalet nerede?' }
-                    ],
-
-                    // 完整記帳資料 (依據 CSV)
+                    // Expenses Data (Parsed from CSV)
                     expenses: [
-                         { item: '機票: 高雄-首爾', original: 5496, currency: 'NTD', twd: 5496, category: 'transport' },
-                         { item: '機票: 首爾-蒙古', original: 120100, currency: 'KRW', twd: 3003, category: 'transport' },
-                         { item: '機票: 蒙古-伊斯坦堡', original: 1415600, currency: 'KRW', twd: 35390, category: 'transport' },
-                         { item: '蒙古機場巴士', original: 15000, currency: 'MNT', twd: 150, category: 'transport' },
-                         { item: '蒙古住宿 (2晚)', original: 1600, currency: 'NTD', twd: 1600, category: 'stay' },
-                         { item: 'Terelj 一日遊', original: 36, currency: 'USD', twd: 1152, category: 'stay' },
-                         { item: '機票: IST-ADB', original: 4000, currency: 'NTD', twd: 4000, category: 'transport' },
-                         { item: '伊斯坦堡住宿 (3晚)', original: 4500, currency: 'NTD', twd: 4500, category: 'stay' },
-                         { item: 'Selçuk 交通', original: 100, currency: 'NTD', twd: 100, category: 'transport' },
-                         { item: 'Selçuk 住宿', original: 2000, currency: 'NTD', twd: 2000, category: 'stay' },
-                         { item: 'Izmir 住宿', original: 4000, currency: 'NTD', twd: 4000, category: 'stay' },
-                         { item: '機票: ADB-ORK', original: 5000, currency: 'NTD', twd: 5000, category: 'transport' }
+                         { item: '機票: 高雄-首爾', original: 5496, currency: 'NTD', twd: 5496, category: 'transport', date: '4/24', payment: 'Card', tags: ['Flight', 'China Airlines'] },
+                         { item: '機票: 首爾-蒙古', original: 120100, currency: 'KRW', twd: 3003, category: 'transport', date: '4/24', payment: 'Card', tags: ['Flight', 'MIAT'] },
+                         { item: '機票: 蒙古-伊斯坦堡', original: 1415600, currency: 'KRW', twd: 35390, category: 'transport', date: '4/26', payment: 'Card', tags: ['Flight', 'MIAT'] },
+                         { item: '機票: IST-ADB', original: 4000, currency: 'NTD', twd: 4000, category: 'transport', date: '4/29', payment: 'Card', tags: ['Flight', 'Turkish'] },
+                         { item: '機票: ADB-ORK', original: 5000, currency: 'NTD', twd: 5000, category: 'transport', date: '5/2', payment: 'Card', tags: ['Flight', 'SunExpress'] },
+                         { item: '交通: 蒙古機場巴士', original: 30000, currency: 'MNT', twd: 300, category: 'transport', date: '4/24', payment: 'Cash', tags: ['Bus'] },
+                         { item: '交通: ADB-Selçuk', original: 100, currency: 'NTD', twd: 100, category: 'transport', date: '4/29', payment: 'Cash', tags: ['Bus'] },
+                         { item: '交通: Selçuk-Izmir', original: 150, currency: 'NTD', twd: 150, category: 'transport', date: '4/30', payment: 'Cash', tags: ['Bus'] },
+                         { item: '住宿: 蒙古 (2晚)', original: 1600, currency: 'NTD', twd: 1600, category: 'stay', date: '4/24', payment: 'Card', tags: ['Hotel'] },
+                         { item: '體驗: 蒙古一日遊', original: 36, currency: 'USD', twd: 1152, category: 'ticket', date: '4/25', payment: 'Card', tags: ['Tour'] },
+                         { item: '住宿: 伊斯坦堡 (3晚)', original: 4500, currency: 'NTD', twd: 4500, category: 'stay', date: '4/26', payment: 'Card', tags: ['Hotel'] },
+                         { item: '住宿: Selçuk (1晚)', original: 2000, currency: 'NTD', twd: 2000, category: 'stay', date: '4/29', payment: 'Card', tags: ['Hotel'] },
+                         { item: '住宿: Izmir (1晚)', original: 4000, currency: 'NTD', twd: 4000, category: 'stay', date: '4/30', payment: 'Card', tags: ['Hotel'] },
                     ],
 
-                    // 完整行程資料 (依據 CSV/PDF 4/24 - 5/2)
+                    // Full Itinerary Data (Recovered)
                     itinerary: [
                         // 4/24
                         { id: 1, date: '2026-04-24', time: '08:45', location: '釜山金海機場', activity: '飛往首爾金浦 (大韓航空)', type: 'transport', note: '20kg行李直掛', coords: [35.1796, 129.0756] },
@@ -298,9 +427,9 @@
                         // 4/26
                         { id: 7, date: '2026-04-26', time: '07:55', location: '烏蘭巴托機場', activity: '飛往伊斯坦堡 (蒙古航空商務艙)', type: 'transport', note: '需在機場過夜', coords: [47.843, 106.764] },
                         { id: 8, date: '2026-04-26', time: '14:00', location: '伊斯坦堡', activity: '抵達並入住舊城區', type: 'stay', note: '預計住宿 3 晚', coords: [41.0082, 28.9784] },
-                        // 4/27
+                        // 4/27 (Newly Added)
                         { id: 9, date: '2026-04-27', time: '10:00', location: '聖索菲亞大教堂', activity: '歷史城區探索', type: 'visit', note: '自由活動', coords: [41.0086, 28.9802] },
-                        // 4/28
+                        // 4/28 (Newly Added)
                         { id: 10, date: '2026-04-28', time: '09:00', location: '大巴扎市集', activity: '購物與美食', type: 'visit', note: '購買土耳其軟糖', coords: [41.0107, 28.9680] },
                         // 4/29
                         { id: 11, date: '2026-04-29', time: '10:00', location: '伊斯坦堡機場', activity: '飛往 Izmir (ADB)', type: 'transport', note: '土航商務艙', coords: [41.2768, 28.7293] },
@@ -328,10 +457,31 @@
                 },
                 calculateTWD() {
                     if(!this.expenseForm.amount) return 0;
-                    return Math.round(this.expenseForm.amount * this.rates[this.expenseForm.currency]);
+                    return Math.round(parseFloat(this.expenseForm.amount) * this.rates[this.expenseForm.currency]);
                 },
                 totalSpent() {
                     return this.expenses.reduce((sum, e) => sum + e.twd, 0);
+                },
+                filteredExpenses() {
+                    let list = this.expenses;
+                    
+                    // Search
+                    if (this.searchQuery) {
+                        const lower = this.searchQuery.toLowerCase();
+                        list = list.filter(e => 
+                            e.item.toLowerCase().includes(lower) || 
+                            (e.tags && e.tags.some(t => t.toLowerCase().includes(lower)))
+                        );
+                    }
+
+                    // Sort
+                    if (this.sortKey === 'amount') {
+                        list = [...list].sort((a, b) => b.twd - a.twd);
+                    } else if (this.sortKey === 'date') {
+                        list = [...list].sort((a, b) => a.date.localeCompare(b.date));
+                    }
+
+                    return list;
                 }
             },
             watch: {
@@ -349,19 +499,98 @@
                 this.fetchWeather();
             },
             methods: {
-                getTypeColor(type) {
-                    if(type === 'transport') return 'bg-blue-400';
-                    if(type === 'stay') return 'bg-purple-400';
-                    return 'bg-teal-500';
+                // --- Expenses & Wallet Logic ---
+                openAddExpenseModal() {
+                    this.expenseForm = { amount: '', currency: 'MNT', item: '', category: 'food', payment: 'Cash', tags: [] };
+                    this.showExpenseModal = true;
                 },
-                getCategoryIcon(cat) {
-                    if(cat === 'transport') return 'fa-solid fa-plane';
-                    if(cat === 'stay') return 'fa-solid fa-bed';
-                    return 'fa-solid fa-bag-shopping';
+                closeExpenseModal() {
+                    this.showExpenseModal = false;
                 },
+                appendNumber(num) {
+                    if (num === '.' && this.expenseForm.amount.includes('.')) return;
+                    if (this.expenseForm.amount.length > 8) return;
+                    this.expenseForm.amount += num.toString();
+                },
+                backspaceNumber() {
+                    this.expenseForm.amount = this.expenseForm.amount.slice(0, -1);
+                },
+                saveExpense() {
+                    if (!this.expenseForm.amount) return;
+                    this.expenses.unshift({
+                        item: this.expenseForm.item || '未命名消費',
+                        original: parseFloat(this.expenseForm.amount),
+                        currency: this.expenseForm.currency,
+                        twd: this.calculateTWD,
+                        category: this.expenseForm.category,
+                        date: 'Today, Now',
+                        payment: this.expenseForm.payment,
+                        tags: this.expenseForm.tags
+                    });
+                    this.closeExpenseModal();
+                },
+                sortExpenses(key) {
+                    this.sortKey = key;
+                },
+                getCategoryIcon(catId) {
+                    const cat = this.categories.find(c => c.id === catId);
+                    return cat ? cat.icon : 'fa-solid fa-bag-shopping';
+                },
+                getCategoryColor(catId) {
+                    const colors = { transport: '#0D9488', food: '#0891b2', stay: '#EAB308', shop: '#F97316', other: '#64748B' };
+                    return colors[catId] || '#64748B';
+                },
+                getCategoryBg(catId) {
+                    const bgs = { transport: 'bg-teal-50', food: 'bg-cyan-50', stay: 'bg-yellow-50', shop: 'bg-orange-50', other: 'bg-slate-50' };
+                    return bgs[catId] || 'bg-slate-50';
+                },
+
+                // --- Itinerary Logic (UI Helpers) ---
+                getDotColor(type) {
+                    if(type === 'transport') return 'border-teal-600';
+                    if(type === 'stay') return 'border-yellow-500';
+                    return 'border-orange-500'; 
+                },
+                getDotInnerColor(type) {
+                    if(type === 'transport') return 'bg-teal-600';
+                    if(type === 'stay') return 'bg-yellow-500';
+                    return 'bg-orange-500';
+                },
+                getIconBgColor(type) {
+                    if(type === 'transport') return 'bg-teal-50';
+                    if(type === 'stay') return 'bg-yellow-50';
+                    return 'bg-orange-50';
+                },
+                getIconColor(type) {
+                    if(type === 'transport') return '#0D9488'; 
+                    if(type === 'stay') return '#EAB308'; 
+                    return '#F97316'; 
+                },
+                getItemIcon(item) {
+                    if(item.type === 'transport') {
+                        if(item.activity.includes('飛')) return 'fa-solid fa-plane-departure';
+                        if(item.activity.includes('巴士')) return 'fa-solid fa-bus';
+                        return 'fa-solid fa-route';
+                    }
+                    if(item.type === 'stay') return 'fa-solid fa-bed';
+                    if(item.location.includes('機場')) return 'fa-solid fa-plane';
+                    return 'fa-solid fa-camera';
+                },
+                
+                // --- General Utils ---
                 formatDateShort(dateStr) {
                     const d = new Date(dateStr);
                     return `${d.getMonth()+1}/${d.getDate()}`;
+                },
+                formatDateLong(dateStr) {
+                    const d = new Date(dateStr);
+                    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                    return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+                },
+                getDayName(dateStr) {
+                    const d = new Date(dateStr);
+                    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                    return days[d.getDay()];
                 },
                 formatNumber(num) {
                     return new Intl.NumberFormat('zh-TW').format(num);
@@ -370,7 +599,7 @@
                     return note ? note.replace(/\n/g, '<br>') : '';
                 },
                 
-                // Weather Logic - Fixed
+                // --- Weather API ---
                 async fetchWeather() {
                     const firstItem = this.dailyItinerary[0];
                     if (!firstItem || !firstItem.coords) { this.weather = null; return; }
@@ -379,7 +608,6 @@
                     try {
                         const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`);
                         const data = await res.json();
-                        // 修正：手動對應 temperature 到 temp，並四捨五入
                         this.weather = {
                             temp: Math.round(data.current_weather.temperature)
                         };
@@ -388,31 +616,30 @@
                     }
                 },
 
-                // CRUD Logic
-                openAddModal() {
+                // --- Itinerary CRUD ---
+                openAddItineraryModal() {
                     this.isEditing = false;
                     this.form = { id: null, time: '', location: '', activity: '', type: 'visit', note: '' };
-                    this.showModal = true;
+                    this.showItineraryModal = true;
                 },
-                openEditModal(item) {
+                openEditItineraryModal(item) {
                     this.isEditing = true;
                     this.form = { ...item };
-                    this.showModal = true;
+                    this.showItineraryModal = true;
                 },
-                deleteItem(id) {
+                deleteItineraryItem(id) {
                     if(confirm('確定刪除此行程？')) {
                         this.itinerary = this.itinerary.filter(i => i.id !== id);
                         if(this.currentTab === 'map') this.updateMapMarkers();
                     }
                 },
-                saveItem() {
+                saveItineraryItem() {
                     if (!this.form.location) { alert('請輸入地點'); return; }
                     
                     if (this.isEditing) {
                         const idx = this.itinerary.findIndex(i => i.id === this.form.id);
                         if (idx !== -1) this.itinerary[idx] = { ...this.itinerary[idx], ...this.form };
                     } else {
-                        // 新增行程時，預設使用當天第一個景點的座標，避免地圖報錯
                         const currentDayItems = this.dailyItinerary;
                         const defaultCoords = currentDayItems.length > 0 ? currentDayItems[0].coords : [47.9, 106.9];
                         
@@ -423,27 +650,13 @@
                             coords: defaultCoords
                         });
                     }
-                    this.showModal = false;
+                    this.showItineraryModal = false;
                     this.fetchWeather();
                     if(this.currentTab === 'map') this.updateMapMarkers();
                 },
-                closeModal() { this.showModal = false; },
+                closeItineraryModal() { this.showItineraryModal = false; },
 
-                // Expenses Logic
-                addExpense() {
-                    if (!this.expenseForm.amount) return;
-                    this.expenses.unshift({
-                        item: this.expenseForm.item || '未命名',
-                        original: parseFloat(this.expenseForm.amount),
-                        currency: this.expenseForm.currency,
-                        twd: this.calculateTWD,
-                        category: 'other'
-                    });
-                    this.expenseForm.amount = '';
-                    this.expenseForm.item = '';
-                },
-
-                // Map Logic
+                // --- Map Logic ---
                 initMap() {
                     if (this.map) {
                         this.updateMapMarkers();
@@ -483,9 +696,6 @@
                             L.circle(e.latlng, {radius: 50, color: 'blue'}).addTo(this.map).bindPopup("你在這裡").openPopup();
                         });
                     }
-                },
-                alertText(phrase) {
-                    alert(`請展示給店員看：\n\n${this.transLang === 'mn' ? phrase.mn : phrase.tr}`);
                 }
             }
         }).mount('#app')
